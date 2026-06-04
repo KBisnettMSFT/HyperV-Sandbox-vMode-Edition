@@ -813,12 +813,24 @@ $SDNMGMTProdKey
 </component>
 </settings>
 <settings pass="oobeSystem">
+<component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<InputLocale>en-us</InputLocale>
+<SystemLocale>en-us</SystemLocale>
+<UILanguage>en-us</UILanguage>
+<UILanguageFallback>en-us</UILanguageFallback>
+<UserLocale>en-us</UserLocale>
+</component>
 <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 <OOBE>
 <HideEULAPage>true</HideEULAPage>
+<HideLocalAccountScreen>true</HideLocalAccountScreen>
+<HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+<HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+<HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+<NetworkLocation>Work</NetworkLocation>
+<ProtectYourPC>3</ProtectYourPC>
 <SkipMachineOOBE>true</SkipMachineOOBE>
 <SkipUserOOBE>true</SkipUserOOBE>
-<HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
  </OOBE>
 <UserAccounts>
 <AdministratorPassword>
