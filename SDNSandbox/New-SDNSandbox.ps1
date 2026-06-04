@@ -923,7 +923,8 @@ function Test-SDNHOSTVMConnection {
     param (
 
         $VMPlacement, 
-        $localCred
+        $localCred,
+        $TimeoutMinutes = 30
 
     )
 
@@ -933,16 +934,43 @@ function Test-SDNHOSTVMConnection {
             
             $VerbosePreference = "Continue"    
             
-            $localCred = $using:localCred   
+            $localCred      = $using:localCred   
+            $SDNHOST        = $using:SDNVM.SDNHOST
+            $timeoutMinutes = $using:TimeoutMinutes
             $testconnection = $null
+            $attempt        = 0
+            $stopwatch      = [System.Diagnostics.Stopwatch]::StartNew()
     
             While (!$testconnection) {
+
+                $attempt++
     
-                $testconnection = Invoke-Command -VMName $using:SDNVM.SDNHOST -ScriptBlock { Get-Process } -Credential $localCred -ErrorAction Ignore
+                $testconnection = Invoke-Command -VMName $SDNHOST -ScriptBlock { Get-Process } -Credential $localCred -ErrorAction Ignore
+
+                if (!$testconnection) {
+
+                    if ($stopwatch.Elapsed.TotalMinutes -ge $timeoutMinutes) {
+
+                        throw "Timed out after $timeoutMinutes minutes waiting for PowerShell Direct to '$SDNHOST'. Verify the VM is Running, has finished sysprep/specialize, and that its local Administrator password matches SDNAdminPassword in the config."
+
+                    }
+
+                    # Surface progress roughly every 30s so a real stall is visible instead of an infinite silent spin
+                    if ($attempt % 6 -eq 0) {
+
+                        Write-Verbose "Still waiting for '$SDNHOST' to accept PowerShell Direct (elapsed $([int]$stopwatch.Elapsed.TotalSeconds)s)..."
+
+                    }
+
+                    Start-Sleep -Seconds 5
+
+                }
     
             }
+
+            $stopwatch.Stop()
         
-            Write-Verbose "Successfully contacted $($using:SDNVM.SDNHOST)"
+            Write-Verbose "Successfully contacted $SDNHOST"
                          
         }
     }    
