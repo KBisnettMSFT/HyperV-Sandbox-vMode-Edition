@@ -3246,6 +3246,44 @@ function New-WACvModeVM {
 
             Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager" -Name "DoNotOpenServerManagerAtLogon" -Value 1
 
+            # Resize Partition (expand the OS volume to fill the 130GB virtual disk before installs)
+            Write-Verbose -Message "Resizing $VMName's partition"
+
+            $recoveryPartition = Get-Partition | Where-Object { $_.type -eq "Recovery" }
+
+            If ($recoveryPartition) {
+
+                $params = @{
+
+                    DiskNumber      = 0
+                    PartitionNumber = $recoveryPartition.PartitionNumber 
+                    Confirm         = $false
+
+                }
+
+                Remove-Partition @params
+
+            }
+
+            $basicPartition = Get-Partition | Where-Object { $_.type -eq "Basic" }
+
+            $size = Get-PartitionSupportedSize -DiskNumber 0 -PartitionNumber $basicPartition.PartitionNumber
+
+            if ($size.SizeMax -ge 10) {
+
+                $params = @{
+
+                    DiskNumber      = 0
+                    PartitionNumber = $basicPartition.PartitionNumber 
+                    Confirm         = $false
+                    Size            = $size.SizeMax
+
+                }
+
+                Resize-Partition @params
+
+            }
+
             New-Item -ItemType Directory -Path C:\deploy -Force | Out-Null
 
             # 1) Visual C++ Redistributable prerequisite (winget if present, else direct download)
