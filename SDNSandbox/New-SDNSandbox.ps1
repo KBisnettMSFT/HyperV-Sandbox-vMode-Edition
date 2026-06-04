@@ -3027,6 +3027,268 @@ CertificateTemplate= WebServer
 
 }
 
+function New-WACvModeVM {
+
+    Param (
+        $SDNConfig,
+        $localCred,
+        $domainCred
+    )
+
+    Invoke-Command -VMName SDNMGMT -Credential $localCred -ScriptBlock {
+
+        $VMName = $using:SDNConfig.vModeVMName
+        $ParentDiskPath = "C:\VMs\Base\"
+        $VHDPath = "D:\VMs\"
+        $OSVHDX = "GUI.vhdx"
+        $BaseVHDPath = $ParentDiskPath + $OSVHDX
+        $SDNConfig = $using:SDNConfig
+
+        $ProgressPreference = "SilentlyContinue"
+        $ErrorActionPreference = "Stop"
+        $VerbosePreference = "Continue"
+        $WarningPreference = "SilentlyContinue"
+
+        $localCred = $using:localCred
+        $domainCred = $using:domainCred
+
+        # Create Host OS Disk (differencing off the GUI parent)
+        Write-Verbose "Creating $VMName differencing disk"
+        $params = @{
+            ParentPath = $BaseVHDPath
+            Path       = (($VHDPath) + ($VMName) + (".vhdx"))
+        }
+        New-VHD -Differencing @params | Out-Null
+
+        $VerbosePreference = "SilentlyContinue"
+        Import-Module DISM
+        $VerbosePreference = "Continue"
+
+        Resize-VHD -Path (($VHDPath) + ($VMName) + (".vhdx")) -SizeBytes 130GB
+
+        Write-Verbose "Mounting and Injecting Answer File into the $VMName VM."
+        New-Item -Path "C:\TempVModeMount" -ItemType Directory | Out-Null
+        Mount-WindowsImage -Path "C:\TempVModeMount" -Index 1 -ImagePath (($VHDPath) + ($VMName) + (".vhdx")) | Out-Null
+
+        # Apply Custom Unattend.xml (domain-joined, static IP)
+        New-Item -Path C:\TempVModeMount\windows -ItemType Directory -Name Panther -Force | Out-Null
+        $Password = $SDNConfig.SDNAdminPassword
+        $ProductKey = $SDNConfig.GUIProductKey
+        $Gateway = $SDNConfig.SDNLABRoute
+        $DNS = $SDNConfig.SDNLABDNS
+        $IPAddress = $SDNConfig.vModeIP
+        $Domain = $SDNConfig.SDNDomainFQDN
+
+        $Unattend = @"
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+    <settings pass="specialize">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <ProductKey>$ProductKey</ProductKey>
+            <ComputerName>$VMName</ComputerName>
+            <RegisteredOwner>$ENV:USERNAME</RegisteredOwner>
+        </component>
+        <component name="Microsoft-Windows-TCPIP" processorArchitecture="wow64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Interfaces>
+                <Interface wcm:action="add">
+                    <Ipv4Settings>
+                        <DhcpEnabled>false</DhcpEnabled>
+                        <RouterDiscoveryEnabled>true</RouterDiscoveryEnabled>
+                    </Ipv4Settings>
+                    <UnicastIpAddresses>
+                        <IpAddress wcm:action="add" wcm:keyValue="1">$IPAddress</IpAddress>
+                    </UnicastIpAddresses>
+                    <Identifier>Ethernet</Identifier>
+                    <Routes>
+                        <Route wcm:action="add">
+                            <Identifier>1</Identifier>
+                            <NextHopAddress>$Gateway</NextHopAddress>
+                        </Route>
+                    </Routes>
+                </Interface>
+            </Interfaces>
+        </component>
+        <component name="Microsoft-Windows-DNS-Client" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Interfaces>
+                <Interface wcm:action="add">
+                    <DNSServerSearchOrder>
+                        <IpAddress wcm:action="add" wcm:keyValue="1">$DNS</IpAddress>
+                    </DNSServerSearchOrder>
+                    <Identifier>Ethernet</Identifier>
+                    <DNSDomain>$Domain</DNSDomain>
+                    <EnableAdapterDomainNameRegistration>true</EnableAdapterDomainNameRegistration>
+                </Interface>
+            </Interfaces>
+        </component>
+        <component name="Networking-MPSSVC-Svc" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <DomainProfile_EnableFirewall>false</DomainProfile_EnableFirewall>
+            <PrivateProfile_EnableFirewall>false</PrivateProfile_EnableFirewall>
+            <PublicProfile_EnableFirewall>false</PublicProfile_EnableFirewall>
+        </component>
+        <component name="Microsoft-Windows-TerminalServices-LocalSessionManager" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <fDenyTSConnections>false</fDenyTSConnections>
+        </component>
+        <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Identification>
+                <Credentials>
+                    <Domain>$Domain</Domain>
+                    <Password>$Password</Password>
+                    <Username>Administrator</Username>
+                </Credentials>
+                <JoinDomain>$Domain</JoinDomain>
+            </Identification>
+        </component>
+        <component name="Microsoft-Windows-IE-ESC" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <IEHardenAdmin>false</IEHardenAdmin>
+            <IEHardenUser>false</IEHardenUser>
+        </component>
+    </settings>
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <UserAccounts>
+                <AdministratorPassword>
+                    <Value>$Password</Value>
+                    <PlainText>true</PlainText>
+                </AdministratorPassword>
+            </UserAccounts>
+            <TimeZone>Pacific Standard Time</TimeZone>
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <SkipUserOOBE>true</SkipUserOOBE>
+                <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+                <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+                <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+                <NetworkLocation>Work</NetworkLocation>
+                <ProtectYourPC>1</ProtectYourPC>
+                <HideLocalAccountScreen>true</HideLocalAccountScreen>
+            </OOBE>
+        </component>
+        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <UserLocale>en-US</UserLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <InputLocale>0409:00000409</InputLocale>
+            <UILanguage>en-US</UILanguage>
+        </component>
+    </settings>
+    <cpi:offlineImage cpi:source="" xmlns:cpi="urn:schemas-microsoft-com:cpi" />
+</unattend>
+"@
+
+        Set-Content -Value $Unattend -Path "C:\TempVModeMount\Windows\Panther\Unattend.xml" -Force
+
+        Write-Verbose "Dismounting Disk"
+        Dismount-WindowsImage -Path "C:\TempVModeMount" -Save | Out-Null
+        Remove-Item "C:\TempVModeMount"
+
+        # Create VM
+        Write-Verbose "Creating the $VMName VM."
+        $params = @{
+            Name       = $VMName
+            VHDPath    = (($VHDPath) + ($VMName) + (".vhdx"))
+            Path       = $VHDPath
+            Generation = 2
+        }
+        New-VM @params | Out-Null
+
+        $params = @{
+            VMName               = $VMName
+            DynamicMemoryEnabled = $true
+            StartupBytes         = $SDNConfig.MEM_vMode
+            MaximumBytes         = $SDNConfig.MEM_vMode
+            MinimumBytes         = 500mb
+        }
+        Set-VMMemory @params | Out-Null
+        Set-VM -Name $VMName -AutomaticStartAction Start -AutomaticStopAction ShutDown | Out-Null
+
+        Write-Verbose "Configuring $VMName's Networking"
+        Remove-VMNetworkAdapter -VMName $VMName -Name "Network Adapter"
+        Add-VMNetworkAdapter -VMName $VMName -Name "Fabric" -SwitchName "vSwitch-Fabric" -DeviceNaming On
+
+        Set-VMProcessor -VMName $VMName -Count 4
+        Set-VM -Name $VMName -AutomaticStopAction TurnOff
+
+        Write-Verbose "Starting $VMName VM."
+        Start-VM -Name $VMName
+
+        # Refresh Domain Cred and wait for the VM to finish domain-join + reboot
+        $domainCred = New-Object -typename System.Management.Automation.PSCredential `
+            -argumentlist (($SDNConfig.SDNDomainFQDN.Split(".")[0]) + "\administrator"), `
+        (ConvertTo-SecureString $SDNConfig.SDNAdminPassword -AsPlainText -Force)
+
+        while ((Invoke-Command -VMName $VMName -Credential $domainCred { "Test" } `
+                    -ea SilentlyContinue) -ne "Test") { Start-Sleep -Seconds 1 }
+
+        # Finish base config, then install WAC Virtualization Mode (all in-guest)
+        Invoke-Command -VMName $VMName -Credential $domainCred -ArgumentList $SDNConfig, $VMName -ScriptBlock {
+
+            $SDNConfig = $args[0]
+            $VMName = $args[1]
+            $Gateway = $SDNConfig.SDNLABRoute
+            $fqdn = $SDNConfig.SDNDomainFQDN
+            $VerbosePreference = "Continue"
+            $ErrorActionPreference = "Stop"
+            $ProgressPreference = "SilentlyContinue"
+
+            Import-Module NetAdapter
+
+            Write-Verbose "Renaming Network Adapter in $VMName VM"
+            Get-NetAdapter | Rename-NetAdapter -NewName Fabric
+
+            $index = (Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.netconnectionid -eq "Fabric" }).InterfaceIndex
+            $NetInterface = Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object { $_.InterfaceIndex -eq $index }
+            $NetInterface.SetGateways($Gateway) | Out-Null
+
+            Write-Verbose "Configuring MTU"
+            Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Set-NetAdapterAdvancedProperty -RegistryValue $SDNConfig.SDNLABMTU -RegistryKeyword "*JumboPacket"
+
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager" -Name "DoNotOpenServerManagerAtLogon" -Value 1
+
+            New-Item -ItemType Directory -Path C:\deploy -Force | Out-Null
+
+            # 1) Visual C++ Redistributable prerequisite (winget if present, else direct download)
+            Write-Verbose "Installing Visual C++ Redistributable prerequisite"
+            $vcInstalled = $false
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                try {
+                    winget install --id "Microsoft.VCRedist.2015+.x64" --silent --accept-source-agreements --accept-package-agreements --disable-interactivity | Out-Null
+                    $vcInstalled = $true
+                }
+                catch { Write-Verbose "winget VC++ install failed; will fall back to direct download" }
+            }
+            if (-not $vcInstalled) {
+                $vcPath = "C:\deploy\vc_redist.x64.exe"
+                Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $vcPath -UseBasicParsing
+                Start-Process -FilePath $vcPath -ArgumentList "/install", "/quiet", "/norestart" -Wait
+            }
+
+            # 2) Download the vMode preview installer (BITS, fall back to Invoke-WebRequest)
+            Write-Verbose "Downloading WAC Virtualization Mode installer"
+            $vModeInstaller = "C:\deploy\WindowsAdminCenterVirtualizationModePreview.exe"
+            Start-BitsTransfer -Source $SDNConfig.vModeUri -Destination $vModeInstaller -ErrorAction SilentlyContinue
+            if (-not (Test-Path $vModeInstaller)) {
+                Invoke-WebRequest -Uri $SDNConfig.vModeUri -OutFile $vModeInstaller -UseBasicParsing
+            }
+
+            # 3) Build the unattended INI. DPAPI password MUST be generated here (in-guest, this user).
+            Write-Verbose "Generating unattended install INI"
+            $encryptedPwd = $SDNConfig.SDNAdminPassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString
+            $ini = @"
+[AppSettings]
+PostgreSQLUsername=postgres
+PostgreSQLPassword=$encryptedPwd
+PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
+"@
+            Set-Content -Path "C:\deploy\wac-config.ini" -Value $ini -Force -Encoding ASCII
+
+            # 4) Silent install
+            Write-Verbose "Installing WAC Virtualization Mode (silent). This takes several minutes."
+            Start-Process -FilePath $vModeInstaller -ArgumentList '/VERYSILENT', '/ConfigFile="C:\deploy\wac-config.ini"' -Wait
+
+            Write-Verbose "WAC vMode install finished. Reachable at https://$VMName.$fqdn"
+        }
+    }
+}
+
 function New-HyperConvergedEnvironment {
 
     Param (
