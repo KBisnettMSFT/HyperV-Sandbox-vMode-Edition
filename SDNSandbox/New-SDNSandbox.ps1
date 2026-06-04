@@ -832,6 +832,15 @@ $SDNMGMTProdKey
 <SkipMachineOOBE>true</SkipMachineOOBE>
 <SkipUserOOBE>true</SkipUserOOBE>
  </OOBE>
+<AutoLogon>
+<Password>
+<Value>$SDNAdminPassword</Value>
+<PlainText>true</PlainText>
+</Password>
+<Enabled>true</Enabled>
+<LogonCount>1</LogonCount>
+<Username>Administrator</Username>
+</AutoLogon>
 <UserAccounts>
 <AdministratorPassword>
 <Value>$SDNAdminPassword</Value>
