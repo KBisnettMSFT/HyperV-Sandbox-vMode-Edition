@@ -10,7 +10,7 @@
     # WAC Virtualization Mode (vMode) - preview. aka.ms/WACDownloadvMode 301-redirects to this direct download.
     vModeUri       = 'https://download.microsoft.com/download/5e854024-dcf1-4e86-9546-7389fd08a34b/WindowsAdminCenterVirtualizationModePreview.exe'
     vModeVMName    = 'wacvmode'
-    vModeIP        = '192.168.1.10/24'
+    vModeIP        = '192.168.1.15/24'
     PostgreSQLPort = 5432
 
     # VHDX Paths
