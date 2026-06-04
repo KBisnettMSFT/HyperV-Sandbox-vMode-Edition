@@ -7,6 +7,11 @@
     # Software download links
      admincenterUri = 'https://go.microsoft.com/fwlink/?linkid=2220149&clcid=0x409&culture=en-us&country=us'
     
+    # WAC Virtualization Mode (vMode) - preview. aka.ms/WACDownloadvMode 301-redirects to this direct download.
+    vModeUri       = 'https://download.microsoft.com/download/5e854024-dcf1-4e86-9546-7389fd08a34b/WindowsAdminCenterVirtualizationModePreview.exe'
+    vModeVMName    = 'wacvmode'
+    vModeIP        = '192.168.1.10/24'
+    PostgreSQLPort = 5432
 
     # VHDX Paths
     # If the path below does not exist when New-SDNSandbox.ps1 runs, it auto-locates the image in
@@ -21,7 +26,7 @@
     # VM Configuration
     HostVMPath                           = "V:\VMs"                              # Path where the Nested VMs are stored on all hosts. If this drive does not exist when New-SDNSandbox.ps1 runs, the path is auto-rebased onto the wizard's drive; set it explicitly to override.
     NestedVMMemoryinGB                   = 100GB                                 # This value controls the amount of RAM for each Nested Hyper-V Host (SDNHOST1-2).
-    sdnMGMTMemoryinGB                    = 24GB                                  # This value controls the amount of RAM for the SDNMGMT Nested VM which contains only the Console, Router, Admincenter, and DC VMs.
+    sdnMGMTMemoryinGB                    = 32GB                                  # RAM for the SDNMGMT Nested VM (Console, Router, Admincenter, DC, and wacvmode VMs). Bumped from 24GB to host the always-on WAC vMode VM.
     InternalSwitch                       = "InternalSwitch"                      # Name of internal switch that the SDN Lab VMs will use in Single Host mode. This only applies when using a single host.
 
 
@@ -58,7 +63,7 @@
     MEM_BGP                              = 4GB                                     # Memory provided for the BGP-ToR-Router
     MEM_Console                          = 4GB                                     # Memory provided for the Windows 10 Console VM
     MEM_WAC                              = 8GB                                     # Memory provided for the Windows Admin Center VM
-    MEM_GRE                              = 4GB                                     # Memory provided for the gre-target VM
+    MEM_vMode                            = 8GB                                     # Memory for the WAC Virtualization Mode VM
     MEM_IPSEC                            = 4GB                                     # Memory provided for the ipsec-target VM
 
     #Cluster S2D Storage Disk Size (per disk)
