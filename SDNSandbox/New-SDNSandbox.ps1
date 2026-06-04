@@ -3292,6 +3292,35 @@ PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
     }
 }
 
+function Add-WACvModeConnections {
+
+    Param (
+        $SDNConfig,
+        $domainCred
+    )
+
+    # BEST-EFFORT: vMode host/cluster onboarding is normally done in the vMode UI (it deploys
+    # an agent to each node). This attempts the legacy WAC /api/connections PUT for convenience;
+    # if the preview build does not honor it, onboard SDNHOST1/SDNHOST2/SDNCLUSTER manually in the UI.
+    $fqdn = $SDNConfig.SDNDomainFQDN
+    $vModeFqdn = "$($SDNConfig.vModeVMName).$fqdn"
+    $targets = @("SDNHOST1.$fqdn", "SDNHOST2.$fqdn", "SDNCLUSTER.$fqdn")
+
+    foreach ($t in $targets) {
+        try {
+            $type = if ($t -like "SDNCLUSTER*") { "msft.sme.connection-type.cluster" } else { "msft.sme.connection-type.server" }
+            $json = [pscustomobject]@{ id = "$type!$t"; name = $t; type = $type } | ConvertTo-Json
+            $payload = "[`n$json`n]"
+            $uri = "https://$vModeFqdn/api/connections"
+            Invoke-RestMethod -Uri $uri -Method Put -Body $payload -ContentType 'application/json' -Credential $domainCred -UseBasicParsing -DisableKeepAlive -ErrorAction Stop | Out-Null
+            Write-Verbose "Registered $t in vMode"
+        }
+        catch {
+            Write-Verbose "Could not auto-register $t in vMode (expected in preview): $($_.Exception.Message). Onboard it manually in the vMode UI."
+        }
+    }
+}
+
 function New-HyperConvergedEnvironment {
 
     Param (
@@ -4539,6 +4568,10 @@ $lnkV.TargetPath = "%windir%\system32\mstsc.exe"
 $lnkV.Arguments = "/v:wacvmode"
 $lnkV.Description = "WAC Virtualization Mode link for SDN Sandbox."
 $lnkV.Save()
+
+# WAC vMode host/cluster onboarding is normally done in the vMode UI (deploys an agent per node).
+# Uncomment to attempt best-effort auto-registration of SDNHOST1/SDNHOST2/SDNCLUSTER:
+#   Add-WACvModeConnections -SDNConfig $SDNConfig -domainCred $domainCred
 
 $endtime = Get-Date
 
