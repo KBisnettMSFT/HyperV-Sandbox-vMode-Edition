@@ -1613,6 +1613,9 @@ function Set-SDNMGMT {
     Write-Verbose "Provisioning admincenter VM"
     New-AdminCenterVM -SDNConfig $SDNConfig -localCred $localCred -domainCred $domainCred | Out-Null
 
+    Write-Verbose "Provisioning WAC Virtualization Mode VM"
+    New-WACvModeVM -SDNConfig $SDNConfig -localCred $localCred -domainCred $domainCred | Out-Null
+
 
 }
 
