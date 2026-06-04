@@ -4531,6 +4531,15 @@ $lnk.Arguments = "/v:AdminCenter"
 $lnk.Description = "AdminCenter link for SDN Sandbox."
 $lnk.Save()
 
+# Add RDP Link to Desktop for WAC Virtualization Mode
+Remove-Item C:\Users\Public\Desktop\WACvMode.lnk -Force -ErrorAction SilentlyContinue
+$wshshellV = New-Object -ComObject WScript.Shell
+$lnkV = $wshshellV.CreateShortcut("C:\Users\Public\Desktop\WACvMode.lnk")
+$lnkV.TargetPath = "%windir%\system32\mstsc.exe"
+$lnkV.Arguments = "/v:wacvmode"
+$lnkV.Description = "WAC Virtualization Mode link for SDN Sandbox."
+$lnkV.Save()
+
 $endtime = Get-Date
 
 $timeSpan = New-TimeSpan -Start $starttime -End $endtime
