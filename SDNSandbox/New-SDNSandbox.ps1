@@ -3369,8 +3369,35 @@ PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
             Set-Content -Path "C:\deploy\wac-config.ini" -Value $ini -Force -Encoding ASCII
 
             # 4) Silent install
-            Write-Verbose "Installing WAC Virtualization Mode (silent). This takes several minutes."
-            Start-Process -FilePath $vModeInstaller -ArgumentList '/VERYSILENT', '/ConfigFile="C:\deploy\wac-config.ini"' -Wait
+            Write-Verbose "Installing WAC Virtualization Mode (silent). This typically takes 10-20 minutes on a nested VM."
+            # Use a bounded watchdog instead of a plain -Wait: a silent installer that pops a hidden
+            # modal dialog would otherwise block here forever with no signal. Poll with progress and
+            # fail with an actionable message after a generous timeout. Installer arguments are left
+            # exactly as-is so we never feed the external installer a switch it might reject.
+            $proc = Start-Process -FilePath $vModeInstaller `
+                -ArgumentList '/VERYSILENT', '/ConfigFile="C:\deploy\wac-config.ini"' -PassThru
+            $timeoutMinutes = 30
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            while (-not $proc.HasExited) {
+
+                if ($sw.Elapsed.TotalMinutes -ge $timeoutMinutes) {
+
+                    try { $proc.Kill(); $proc.WaitForExit(5000) } catch {}
+                    throw ("WAC vMode install did not finish within $timeoutMinutes minutes. A silent " +
+                        "installer that hangs this way has usually popped a hidden dialog. Inside '$VMName', " +
+                        "look for an installer process with a non-empty MainWindowTitle, then re-run " +
+                        "New-WACvModeVM after deleting D:\VMs\$VMName.vhdx.")
+
+                }
+
+                Write-Verbose "  ...vMode install still running (elapsed $([int]$sw.Elapsed.TotalMinutes) min)"
+                Start-Sleep -Seconds 30
+
+            }
+            $proc.WaitForExit()
+            if ($proc.ExitCode -ne 0) {
+                throw "WAC vMode installer exited with non-zero code $($proc.ExitCode). Check the installer logs inside '$VMName'."
+            }
 
             Write-Verbose "WAC vMode install finished. Reachable at https://$VMName.$fqdn"
         }
