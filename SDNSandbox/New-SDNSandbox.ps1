@@ -3011,6 +3011,24 @@ CertificateTemplate= WebServer
             $Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
             $Shortcut.TargetPath = $TargetFile
             $Shortcut.Save()
+
+            # Create a web-app shortcut for WAC Virtualization Mode (vMode), sitting on the AdminCenter
+            # desktop next to the Windows Admin Center (WAC) app shortcut the installer creates. vMode is
+            # Windows Admin Center running in Virtualization Mode, so it shares the WAC product logo: point
+            # the shortcut's icon at the installed WAC app exe so the vMode App shortcut shows the same
+            # Windows Admin Center logo as the WAC App shortcut.
+            Write-Verbose "Creating Shortcut for WAC Virtualization Mode app"
+            $vModeAppUrl = "https://$($SDNConfig.vModeVMName).$fqdn"
+            $wacAppIcon = Get-ChildItem 'C:\Program Files\WindowsAdminCenter' -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue |
+                Where-Object { $_.BaseName -match 'WindowsAdminCenter' } | Select-Object -First 1 -ExpandProperty FullName
+            if (-not $wacAppIcon) { $wacAppIcon = 'C:\Windows Admin Center\admincenter.exe' }
+            $vModeAppShortcut = @"
+[InternetShortcut]
+URL=$vModeAppUrl
+IconFile=$wacAppIcon
+IconIndex=0
+"@
+            Set-Content -Path 'C:\Users\Public\Desktop\WAC Virtualization Mode.url' -Value $vModeAppShortcut -Force -Encoding ASCII
     
             # Set Network Profiles
 
@@ -4686,14 +4704,10 @@ $lnk.Arguments = "/v:AdminCenter"
 $lnk.Description = "AdminCenter link for SDN Sandbox."
 $lnk.Save()
 
-# Add RDP Link to Desktop for WAC Virtualization Mode
+# The WAC Virtualization Mode (vMode) shortcut intentionally lives INSIDE the AdminCenter VM as a
+# web-app shortcut next to the WAC app (see New-AdminCenterVM), not as an RDP link on the host desktop.
+# Remove any vMode RDP link left behind by an earlier build.
 Remove-Item C:\Users\Public\Desktop\WACvMode.lnk -Force -ErrorAction SilentlyContinue
-$wshshellV = New-Object -ComObject WScript.Shell
-$lnkV = $wshshellV.CreateShortcut("C:\Users\Public\Desktop\WACvMode.lnk")
-$lnkV.TargetPath = "%windir%\system32\mstsc.exe"
-$lnkV.Arguments = "/v:wacvmode"
-$lnkV.Description = "WAC Virtualization Mode link for SDN Sandbox."
-$lnkV.Save()
 
 # WAC vMode host/cluster onboarding is normally done in the vMode UI (deploys an agent per node).
 # Uncomment to attempt best-effort auto-registration of SDNHOST1/SDNHOST2/SDNCLUSTER:
