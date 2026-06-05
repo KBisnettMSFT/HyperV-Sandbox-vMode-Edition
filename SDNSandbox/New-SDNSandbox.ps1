@@ -813,13 +813,34 @@ $SDNMGMTProdKey
 </component>
 </settings>
 <settings pass="oobeSystem">
+<component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<InputLocale>en-us</InputLocale>
+<SystemLocale>en-us</SystemLocale>
+<UILanguage>en-us</UILanguage>
+<UILanguageFallback>en-us</UILanguageFallback>
+<UserLocale>en-us</UserLocale>
+</component>
 <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 <OOBE>
 <HideEULAPage>true</HideEULAPage>
+<HideLocalAccountScreen>true</HideLocalAccountScreen>
+<HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+<HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+<HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+<NetworkLocation>Work</NetworkLocation>
+<ProtectYourPC>3</ProtectYourPC>
 <SkipMachineOOBE>true</SkipMachineOOBE>
 <SkipUserOOBE>true</SkipUserOOBE>
-<HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
  </OOBE>
+<AutoLogon>
+<Password>
+<Value>$SDNAdminPassword</Value>
+<PlainText>true</PlainText>
+</Password>
+<Enabled>true</Enabled>
+<LogonCount>1</LogonCount>
+<Username>Administrator</Username>
+</AutoLogon>
 <UserAccounts>
 <AdministratorPassword>
 <Value>$SDNAdminPassword</Value>
@@ -923,7 +944,8 @@ function Test-SDNHOSTVMConnection {
     param (
 
         $VMPlacement, 
-        $localCred
+        $localCred,
+        $TimeoutMinutes = 30
 
     )
 
@@ -933,16 +955,43 @@ function Test-SDNHOSTVMConnection {
             
             $VerbosePreference = "Continue"    
             
-            $localCred = $using:localCred   
+            $localCred      = $using:localCred   
+            $SDNHOST        = $using:SDNVM.SDNHOST
+            $timeoutMinutes = $using:TimeoutMinutes
             $testconnection = $null
+            $attempt        = 0
+            $stopwatch      = [System.Diagnostics.Stopwatch]::StartNew()
     
             While (!$testconnection) {
+
+                $attempt++
     
-                $testconnection = Invoke-Command -VMName $using:SDNVM.SDNHOST -ScriptBlock { Get-Process } -Credential $localCred -ErrorAction Ignore
+                $testconnection = Invoke-Command -VMName $SDNHOST -ScriptBlock { Get-Process } -Credential $localCred -ErrorAction Ignore
+
+                if (!$testconnection) {
+
+                    if ($stopwatch.Elapsed.TotalMinutes -ge $timeoutMinutes) {
+
+                        throw "Timed out after $timeoutMinutes minutes waiting for PowerShell Direct to '$SDNHOST'. Verify the VM is Running, has finished sysprep/specialize, and that its local Administrator password matches SDNAdminPassword in the config."
+
+                    }
+
+                    # Surface progress roughly every 30s so a real stall is visible instead of an infinite silent spin
+                    if ($attempt % 6 -eq 0) {
+
+                        Write-Verbose "Still waiting for '$SDNHOST' to accept PowerShell Direct (elapsed $([int]$stopwatch.Elapsed.TotalSeconds)s)..."
+
+                    }
+
+                    Start-Sleep -Seconds 5
+
+                }
     
             }
+
+            $stopwatch.Stop()
         
-            Write-Verbose "Successfully contacted $($using:SDNVM.SDNHOST)"
+            Write-Verbose "Successfully contacted $SDNHOST"
                          
         }
     }    
@@ -1612,6 +1661,9 @@ function Set-SDNMGMT {
 
     Write-Verbose "Provisioning admincenter VM"
     New-AdminCenterVM -SDNConfig $SDNConfig -localCred $localCred -domainCred $domainCred | Out-Null
+
+    Write-Verbose "Provisioning WAC Virtualization Mode VM"
+    New-WACvModeVM -SDNConfig $SDNConfig -localCred $localCred -domainCred $domainCred | Out-Null
 
 
 }
@@ -2959,6 +3011,24 @@ CertificateTemplate= WebServer
             $Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
             $Shortcut.TargetPath = $TargetFile
             $Shortcut.Save()
+
+            # Create a web-app shortcut for WAC Virtualization Mode (vMode), sitting on the AdminCenter
+            # desktop next to the Windows Admin Center (WAC) app shortcut the installer creates. vMode is
+            # Windows Admin Center running in Virtualization Mode, so it shares the WAC product logo: point
+            # the shortcut's icon at the installed WAC app exe so the vMode App shortcut shows the same
+            # Windows Admin Center logo as the WAC App shortcut.
+            Write-Verbose "Creating Shortcut for WAC Virtualization Mode app"
+            $vModeAppUrl = "https://$($SDNConfig.vModeVMName).$fqdn"
+            $wacAppIcon = Get-ChildItem 'C:\Program Files\WindowsAdminCenter' -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue |
+                Where-Object { $_.BaseName -match 'WindowsAdminCenter' } | Select-Object -First 1 -ExpandProperty FullName
+            if (-not $wacAppIcon) { $wacAppIcon = 'C:\Windows Admin Center\admincenter.exe' }
+            $vModeAppShortcut = @"
+[InternetShortcut]
+URL=$vModeAppUrl
+IconFile=$wacAppIcon
+IconIndex=0
+"@
+            Set-Content -Path 'C:\Users\Public\Desktop\WAC Virtualization Mode.url' -Value $vModeAppShortcut -Force -Encoding ASCII
     
             # Set Network Profiles
 
@@ -3025,6 +3095,374 @@ CertificateTemplate= WebServer
 
     } 
 
+}
+
+function New-WACvModeVM {
+
+    Param (
+        $SDNConfig,
+        $localCred,
+        $domainCred
+    )
+
+    Invoke-Command -VMName SDNMGMT -Credential $localCred -ScriptBlock {
+
+        $VMName = $using:SDNConfig.vModeVMName
+        $ParentDiskPath = "C:\VMs\Base\"
+        $VHDPath = "D:\VMs\"
+        $OSVHDX = "GUI.vhdx"
+        $BaseVHDPath = $ParentDiskPath + $OSVHDX
+        $SDNConfig = $using:SDNConfig
+
+        $ProgressPreference = "SilentlyContinue"
+        $ErrorActionPreference = "Stop"
+        $VerbosePreference = "Continue"
+        $WarningPreference = "SilentlyContinue"
+
+        $localCred = $using:localCred
+        $domainCred = $using:domainCred
+
+        # Create Host OS Disk (differencing off the GUI parent)
+        Write-Verbose "Creating $VMName differencing disk"
+        $params = @{
+            ParentPath = $BaseVHDPath
+            Path       = (($VHDPath) + ($VMName) + (".vhdx"))
+        }
+        New-VHD -Differencing @params | Out-Null
+
+        $VerbosePreference = "SilentlyContinue"
+        Import-Module DISM
+        $VerbosePreference = "Continue"
+
+        Resize-VHD -Path (($VHDPath) + ($VMName) + (".vhdx")) -SizeBytes 130GB
+
+        Write-Verbose "Mounting and Injecting Answer File into the $VMName VM."
+        New-Item -Path "C:\TempVModeMount" -ItemType Directory | Out-Null
+        Mount-WindowsImage -Path "C:\TempVModeMount" -Index 1 -ImagePath (($VHDPath) + ($VMName) + (".vhdx")) | Out-Null
+
+        # Apply Custom Unattend.xml (domain-joined, static IP)
+        New-Item -Path C:\TempVModeMount\windows -ItemType Directory -Name Panther -Force | Out-Null
+        $Password = $SDNConfig.SDNAdminPassword
+        $ProductKey = $SDNConfig.GUIProductKey
+        $Gateway = $SDNConfig.SDNLABRoute
+        $DNS = $SDNConfig.SDNLABDNS
+        $IPAddress = $SDNConfig.vModeIP
+        $Domain = $SDNConfig.SDNDomainFQDN
+
+        $Unattend = @"
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+    <settings pass="specialize">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <ProductKey>$ProductKey</ProductKey>
+            <ComputerName>$VMName</ComputerName>
+            <RegisteredOwner>$ENV:USERNAME</RegisteredOwner>
+        </component>
+        <component name="Microsoft-Windows-TCPIP" processorArchitecture="wow64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Interfaces>
+                <Interface wcm:action="add">
+                    <Ipv4Settings>
+                        <DhcpEnabled>false</DhcpEnabled>
+                        <RouterDiscoveryEnabled>true</RouterDiscoveryEnabled>
+                    </Ipv4Settings>
+                    <UnicastIpAddresses>
+                        <IpAddress wcm:action="add" wcm:keyValue="1">$IPAddress</IpAddress>
+                    </UnicastIpAddresses>
+                    <Identifier>Ethernet</Identifier>
+                    <Routes>
+                        <Route wcm:action="add">
+                            <Identifier>1</Identifier>
+                            <NextHopAddress>$Gateway</NextHopAddress>
+                        </Route>
+                    </Routes>
+                </Interface>
+            </Interfaces>
+        </component>
+        <component name="Microsoft-Windows-DNS-Client" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Interfaces>
+                <Interface wcm:action="add">
+                    <DNSServerSearchOrder>
+                        <IpAddress wcm:action="add" wcm:keyValue="1">$DNS</IpAddress>
+                    </DNSServerSearchOrder>
+                    <Identifier>Ethernet</Identifier>
+                    <DNSDomain>$Domain</DNSDomain>
+                    <EnableAdapterDomainNameRegistration>true</EnableAdapterDomainNameRegistration>
+                </Interface>
+            </Interfaces>
+        </component>
+        <component name="Networking-MPSSVC-Svc" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <DomainProfile_EnableFirewall>false</DomainProfile_EnableFirewall>
+            <PrivateProfile_EnableFirewall>false</PrivateProfile_EnableFirewall>
+            <PublicProfile_EnableFirewall>false</PublicProfile_EnableFirewall>
+        </component>
+        <component name="Microsoft-Windows-TerminalServices-LocalSessionManager" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <fDenyTSConnections>false</fDenyTSConnections>
+        </component>
+        <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Identification>
+                <Credentials>
+                    <Domain>$Domain</Domain>
+                    <Password>$Password</Password>
+                    <Username>Administrator</Username>
+                </Credentials>
+                <JoinDomain>$Domain</JoinDomain>
+            </Identification>
+        </component>
+        <component name="Microsoft-Windows-IE-ESC" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <IEHardenAdmin>false</IEHardenAdmin>
+            <IEHardenUser>false</IEHardenUser>
+        </component>
+    </settings>
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <UserAccounts>
+                <AdministratorPassword>
+                    <Value>$Password</Value>
+                    <PlainText>true</PlainText>
+                </AdministratorPassword>
+            </UserAccounts>
+            <TimeZone>Pacific Standard Time</TimeZone>
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <SkipUserOOBE>true</SkipUserOOBE>
+                <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+                <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+                <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+                <NetworkLocation>Work</NetworkLocation>
+                <ProtectYourPC>1</ProtectYourPC>
+                <HideLocalAccountScreen>true</HideLocalAccountScreen>
+            </OOBE>
+        </component>
+        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <UserLocale>en-US</UserLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <InputLocale>0409:00000409</InputLocale>
+            <UILanguage>en-US</UILanguage>
+        </component>
+    </settings>
+    <cpi:offlineImage cpi:source="" xmlns:cpi="urn:schemas-microsoft-com:cpi" />
+</unattend>
+"@
+
+        Set-Content -Value $Unattend -Path "C:\TempVModeMount\Windows\Panther\Unattend.xml" -Force
+
+        Write-Verbose "Dismounting Disk"
+        Dismount-WindowsImage -Path "C:\TempVModeMount" -Save | Out-Null
+        Remove-Item "C:\TempVModeMount"
+
+        # Create VM
+        Write-Verbose "Creating the $VMName VM."
+        $params = @{
+            Name       = $VMName
+            VHDPath    = (($VHDPath) + ($VMName) + (".vhdx"))
+            Path       = $VHDPath
+            Generation = 2
+        }
+        New-VM @params | Out-Null
+
+        # WAC vMode's installer enforces a hard >=8GB RAM minimum and reads the *currently assigned*
+        # memory. With Dynamic Memory the idle VM balloons well below 8GB before the installer runs, so
+        # its environment check fails and pops a modal "minimum requirements" dialog that hangs the
+        # silent install forever. Pin the RAM statically (MEM_vMode is set above 8GB) so the check always passes.
+        $params = @{
+            VMName               = $VMName
+            DynamicMemoryEnabled = $false
+            StartupBytes         = $SDNConfig.MEM_vMode
+        }
+        Set-VMMemory @params | Out-Null
+        Set-VM -Name $VMName -AutomaticStartAction Start -AutomaticStopAction ShutDown | Out-Null
+
+        Write-Verbose "Configuring $VMName's Networking"
+        Remove-VMNetworkAdapter -VMName $VMName -Name "Network Adapter"
+        Add-VMNetworkAdapter -VMName $VMName -Name "Fabric" -SwitchName "vSwitch-Fabric" -DeviceNaming On
+
+        Set-VMProcessor -VMName $VMName -Count 4
+        Set-VM -Name $VMName -AutomaticStopAction TurnOff
+
+        Write-Verbose "Starting $VMName VM."
+        Start-VM -Name $VMName
+
+        # Refresh Domain Cred and wait for the VM to finish domain-join + reboot
+        $domainCred = New-Object -typename System.Management.Automation.PSCredential `
+            -argumentlist (($SDNConfig.SDNDomainFQDN.Split(".")[0]) + "\administrator"), `
+        (ConvertTo-SecureString $SDNConfig.SDNAdminPassword -AsPlainText -Force)
+
+        while ((Invoke-Command -VMName $VMName -Credential $domainCred { "Test" } `
+                    -ea SilentlyContinue) -ne "Test") { Start-Sleep -Seconds 1 }
+
+        # Finish base config, then install WAC Virtualization Mode (all in-guest)
+        Invoke-Command -VMName $VMName -Credential $domainCred -ArgumentList $SDNConfig, $VMName -ScriptBlock {
+
+            $SDNConfig = $args[0]
+            $VMName = $args[1]
+            $Gateway = $SDNConfig.SDNLABRoute
+            $fqdn = $SDNConfig.SDNDomainFQDN
+            $VerbosePreference = "Continue"
+            $ErrorActionPreference = "Stop"
+            $ProgressPreference = "SilentlyContinue"
+
+            Import-Module NetAdapter
+
+            Write-Verbose "Renaming Network Adapter in $VMName VM"
+            Get-NetAdapter | Rename-NetAdapter -NewName Fabric
+
+            $index = (Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.netconnectionid -eq "Fabric" }).InterfaceIndex
+            $NetInterface = Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object { $_.InterfaceIndex -eq $index }
+            $NetInterface.SetGateways($Gateway) | Out-Null
+
+            Write-Verbose "Configuring MTU"
+            Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Set-NetAdapterAdvancedProperty -RegistryValue $SDNConfig.SDNLABMTU -RegistryKeyword "*JumboPacket"
+
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager" -Name "DoNotOpenServerManagerAtLogon" -Value 1
+
+            # Resize Partition (expand the OS volume to fill the 130GB virtual disk before installs)
+            Write-Verbose -Message "Resizing $VMName's partition"
+
+            $recoveryPartition = Get-Partition | Where-Object { $_.type -eq "Recovery" }
+
+            If ($recoveryPartition) {
+
+                $params = @{
+
+                    DiskNumber      = 0
+                    PartitionNumber = $recoveryPartition.PartitionNumber 
+                    Confirm         = $false
+
+                }
+
+                Remove-Partition @params
+
+            }
+
+            $basicPartition = Get-Partition | Where-Object { $_.type -eq "Basic" }
+
+            $size = Get-PartitionSupportedSize -DiskNumber 0 -PartitionNumber $basicPartition.PartitionNumber
+
+            if ($size.SizeMax -ge 10) {
+
+                $params = @{
+
+                    DiskNumber      = 0
+                    PartitionNumber = $basicPartition.PartitionNumber 
+                    Confirm         = $false
+                    Size            = $size.SizeMax
+
+                }
+
+                Resize-Partition @params
+
+            }
+
+            New-Item -ItemType Directory -Path C:\deploy -Force | Out-Null
+
+            # 1) Visual C++ Redistributable prerequisite (winget if present, else direct download)
+            Write-Verbose "Installing Visual C++ Redistributable prerequisite"
+            $vcInstalled = $false
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                try {
+                    winget install --id "Microsoft.VCRedist.2015+.x64" --silent --accept-source-agreements --accept-package-agreements --disable-interactivity | Out-Null
+                    $vcInstalled = $true
+                }
+                catch { Write-Verbose "winget VC++ install failed; will fall back to direct download" }
+            }
+            if (-not $vcInstalled) {
+                $vcPath = "C:\deploy\vc_redist.x64.exe"
+                Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $vcPath -UseBasicParsing
+                Start-Process -FilePath $vcPath -ArgumentList "/install", "/quiet", "/norestart" -Wait
+            }
+
+            # 2) Download the vMode preview installer (Invoke-WebRequest; BITS cannot run under
+            #    PowerShell Direct - the BITS service needs a network logon token and fails with 0x800704DD)
+            Write-Verbose "Downloading WAC Virtualization Mode installer"
+            $vModeInstaller = "C:\deploy\WindowsAdminCenterVirtualizationModePreview.exe"
+            Invoke-WebRequest -Uri $SDNConfig.vModeUri -OutFile $vModeInstaller -UseBasicParsing
+
+            # 3) Build the unattended INI. The installer REQUIRES the PostgreSQL password as a
+            #    DPAPI-encrypted string (its log: "Decrypting DPAPI-encrypted string... It must be
+            #    DPAPI-encrypted"). Generate it here, in-guest, as the SAME user that runs the installer
+            #    (this Invoke-Command runs as contoso\Administrator on the vMode VM, and Start-Process
+            #    below runs in the same context) so DPAPI CurrentUser-scope decryption succeeds.
+            #    (An earlier plaintext attempt produced "Failed to decrypt DPAPI string" -> the installer
+            #    treated the password as empty and popped "You must enter PostgreSQL username, password
+            #    and port!", hanging the silent install.)
+            Write-Verbose "Generating unattended install INI"
+            $encryptedPwd = $SDNConfig.SDNAdminPassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString
+            $ini = @"
+[AppSettings]
+PostgreSQLUsername=postgres
+PostgreSQLPassword=$encryptedPwd
+PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
+"@
+            Set-Content -Path "C:\deploy\wac-config.ini" -Value $ini -Force -Encoding ASCII
+
+            # 4) Silent install
+            Write-Verbose "Installing WAC Virtualization Mode (silent). This typically takes 10-20 minutes on a nested VM."
+            # Use a bounded watchdog instead of a plain -Wait so a silent installer that pops a modal
+            # dialog can't block here forever with no signal: poll with progress and fail with an
+            # actionable message after the timeout.
+            #   /NORESTART        - never let the installer reboot the VM mid-deploy (that would drop our
+            #                       PowerShell Direct session).
+            #   /SUPPRESSMSGBOXES - standard Inno switch; kept, but NOTE it does NOT reliably suppress
+            #                       this installer's own dialogs (a bad-config run still hung on a
+            #                       "You must enter PostgreSQL username, password and port!" box). The real
+            #                       safeguard is feeding correct config (DPAPI password above) + this watchdog.
+            $proc = Start-Process -FilePath $vModeInstaller `
+                -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/ConfigFile="C:\deploy\wac-config.ini"' -PassThru
+            $timeoutMinutes = 30
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            while (-not $proc.HasExited) {
+
+                if ($sw.Elapsed.TotalMinutes -ge $timeoutMinutes) {
+
+                    try { $proc.Kill(); $proc.WaitForExit(5000) } catch {}
+                    throw ("WAC vMode install did not finish within $timeoutMinutes minutes. A silent " +
+                        "installer that hangs this way has usually popped a hidden dialog. Inside '$VMName', " +
+                        "look for an installer process with a non-empty MainWindowTitle, then re-run " +
+                        "New-WACvModeVM after deleting D:\VMs\$VMName.vhdx.")
+
+                }
+
+                Write-Verbose "  ...vMode install still running (elapsed $([int]$sw.Elapsed.TotalMinutes) min)"
+                Start-Sleep -Seconds 30
+
+            }
+            $proc.WaitForExit()
+            if ($proc.ExitCode -ne 0) {
+                throw "WAC vMode installer exited with non-zero code $($proc.ExitCode). Check the installer logs inside '$VMName'."
+            }
+
+            Write-Verbose "WAC vMode install finished. Reachable at https://$VMName.$fqdn"
+        }
+    }
+}
+
+function Add-WACvModeConnections {
+
+    Param (
+        $SDNConfig,
+        $domainCred
+    )
+
+    # BEST-EFFORT: vMode host/cluster onboarding is normally done in the vMode UI (it deploys
+    # an agent to each node). This attempts the legacy WAC /api/connections PUT for convenience;
+    # if the preview build does not honor it, onboard SDNHOST1/SDNHOST2/SDNCLUSTER manually in the UI.
+    $fqdn = $SDNConfig.SDNDomainFQDN
+    $vModeFqdn = "$($SDNConfig.vModeVMName).$fqdn"
+    $targets = @("SDNHOST1.$fqdn", "SDNHOST2.$fqdn", "SDNCLUSTER.$fqdn")
+
+    foreach ($t in $targets) {
+        try {
+            $type = if ($t -like "SDNCLUSTER*") { "msft.sme.connection-type.cluster" } else { "msft.sme.connection-type.server" }
+            $json = [pscustomobject]@{ id = "$type!$t"; name = $t; type = $type } | ConvertTo-Json
+            $payload = "[`n$json`n]"
+            $uri = "https://$vModeFqdn/api/connections"
+            Invoke-RestMethod -Uri $uri -Method Put -Body $payload -ContentType 'application/json' -Credential $domainCred -UseBasicParsing -DisableKeepAlive -ErrorAction Stop | Out-Null
+            Write-Verbose "Registered $t in vMode"
+        }
+        catch {
+            Write-Verbose "Could not auto-register $t in vMode (expected in preview): $($_.Exception.Message). Onboard it manually in the vMode UI."
+        }
+    }
 }
 
 function New-HyperConvergedEnvironment {
@@ -3752,7 +4190,7 @@ Copy-Item $ConfigurationDataFile -Destination .\Applications\SCRIPTS -Force
 
 # Set VM Host Memory
 $totalPhysicalMemory = (Get-CimInstance -ClassName 'Cim_PhysicalMemory' | Measure-Object -Property Capacity -Sum).Sum / 1GB
-$availablePhysicalMemory = (([math]::Round(((((Get-Counter -Counter '\Hyper-V Dynamic Memory Balancer(System Balancer)\Available Memory For Balancing' -ComputerName $env:COMPUTERNAME).CounterSamples.CookedValue) / 1024) - 36) / 2))) * 1073741824
+$availablePhysicalMemory = (([math]::Round(((((Get-Counter -Counter '\Hyper-V Dynamic Memory Balancer(System Balancer)\Available Memory For Balancing' -ComputerName $env:COMPUTERNAME).CounterSamples.CookedValue) / 1024) - 48) / 2))) * 1073741824
 $SDNConfig.NestedVMMemoryinGB = $availablePhysicalMemory
 
 # Set-Credentials
@@ -4265,6 +4703,15 @@ $lnk.TargetPath = "%windir%\system32\mstsc.exe"
 $lnk.Arguments = "/v:AdminCenter"
 $lnk.Description = "AdminCenter link for SDN Sandbox."
 $lnk.Save()
+
+# The WAC Virtualization Mode (vMode) shortcut intentionally lives INSIDE the AdminCenter VM as a
+# web-app shortcut next to the WAC app (see New-AdminCenterVM), not as an RDP link on the host desktop.
+# Remove any vMode RDP link left behind by an earlier build.
+Remove-Item C:\Users\Public\Desktop\WACvMode.lnk -Force -ErrorAction SilentlyContinue
+
+# WAC vMode host/cluster onboarding is normally done in the vMode UI (deploys an agent per node).
+# Uncomment to attempt best-effort auto-registration of SDNHOST1/SDNHOST2/SDNCLUSTER:
+#   Add-WACvModeConnections -SDNConfig $SDNConfig -domainCred $domainCred
 
 $endtime = Get-Date
 

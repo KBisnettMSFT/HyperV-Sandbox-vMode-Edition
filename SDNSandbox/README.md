@@ -66,6 +66,9 @@ The SDN Sandbox can run on either a single host or up to 4 Hyper-V hosts connect
 | 4  | 16gb | 150gb SSD\NVME   | Intel - 4 core Hyper-V Capable with SLAT   | Same Name External Switch on each host  |
 
 
+> **WAC Virtualization Mode (vMode):** The lab now provisions an always-on `wacvmode` VM on SDNMGMT, so SDNMGMT uses 32 GB (up from 24 GB) and the host memory reserve is correspondingly higher. Ensure the physical host has headroom for SDNMGMT (32 GB) plus the two SDNHOSTs.
+
+
 Please note the following regarding the hardware setup requirements:
 
 * It is recommended that you disable all disconnected network adapters or network adapters that will not be used.
