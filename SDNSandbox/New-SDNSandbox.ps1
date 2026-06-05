@@ -3359,30 +3359,35 @@ function New-WACvModeVM {
             $vModeInstaller = "C:\deploy\WindowsAdminCenterVirtualizationModePreview.exe"
             Invoke-WebRequest -Uri $SDNConfig.vModeUri -OutFile $vModeInstaller -UseBasicParsing
 
-            # 3) Build the unattended INI. The config-file installer expects the PostgreSQL password
-            #    in PLAINTEXT; an earlier revision wrote a DPAPI blob (ConvertFrom-SecureString), which
-            #    is the wrong format for the INI and breaks WAC<->PostgreSQL auth. This is a throwaway
-            #    lab, so a plaintext password here is acceptable.
+            # 3) Build the unattended INI. The installer REQUIRES the PostgreSQL password as a
+            #    DPAPI-encrypted string (its log: "Decrypting DPAPI-encrypted string... It must be
+            #    DPAPI-encrypted"). Generate it here, in-guest, as the SAME user that runs the installer
+            #    (this Invoke-Command runs as contoso\Administrator on the vMode VM, and Start-Process
+            #    below runs in the same context) so DPAPI CurrentUser-scope decryption succeeds.
+            #    (An earlier plaintext attempt produced "Failed to decrypt DPAPI string" -> the installer
+            #    treated the password as empty and popped "You must enter PostgreSQL username, password
+            #    and port!", hanging the silent install.)
             Write-Verbose "Generating unattended install INI"
-            $pgPwd = $SDNConfig.SDNAdminPassword
+            $encryptedPwd = $SDNConfig.SDNAdminPassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString
             $ini = @"
 [AppSettings]
 PostgreSQLUsername=postgres
-PostgreSQLPassword=$pgPwd
+PostgreSQLPassword=$encryptedPwd
 PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
 "@
             Set-Content -Path "C:\deploy\wac-config.ini" -Value $ini -Force -Encoding ASCII
 
             # 4) Silent install
             Write-Verbose "Installing WAC Virtualization Mode (silent). This typically takes 10-20 minutes on a nested VM."
-            # Use a bounded watchdog instead of a plain -Wait: a silent installer that pops a hidden
-            # modal dialog would otherwise block here forever with no signal. Poll with progress and
-            # fail with an actionable message after a generous timeout.
-            #   /SUPPRESSMSGBOXES - auto-answer any [Code] MsgBox (e.g. the "minimum requirements not met"
-            #                       dialog) with its default button so a failed check aborts with an exit
-            #                       code instead of hanging the silent install forever.
+            # Use a bounded watchdog instead of a plain -Wait so a silent installer that pops a modal
+            # dialog can't block here forever with no signal: poll with progress and fail with an
+            # actionable message after the timeout.
             #   /NORESTART        - never let the installer reboot the VM mid-deploy (that would drop our
-            #                       PowerShell Direct session). All are standard Inno Setup switches.
+            #                       PowerShell Direct session).
+            #   /SUPPRESSMSGBOXES - standard Inno switch; kept, but NOTE it does NOT reliably suppress
+            #                       this installer's own dialogs (a bad-config run still hung on a
+            #                       "You must enter PostgreSQL username, password and port!" box). The real
+            #                       safeguard is feeding correct config (DPAPI password above) + this watchdog.
             $proc = Start-Process -FilePath $vModeInstaller `
                 -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/ConfigFile="C:\deploy\wac-config.ini"' -PassThru
             $timeoutMinutes = 30
