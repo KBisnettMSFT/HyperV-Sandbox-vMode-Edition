@@ -26,7 +26,7 @@
     # VM Configuration
     HostVMPath                           = "V:\VMs"                              # Path where the Nested VMs are stored on all hosts. If this drive does not exist when New-SDNSandbox.ps1 runs, the path is auto-rebased onto the wizard's drive; set it explicitly to override.
     NestedVMMemoryinGB                   = 100GB                                 # This value controls the amount of RAM for each Nested Hyper-V Host (SDNHOST1-2).
-    sdnMGMTMemoryinGB                    = 32GB                                  # RAM for the SDNMGMT Nested VM (Console, Router, Admincenter, DC, and wacvmode VMs). Bumped from 24GB to host the always-on WAC vMode VM.
+    sdnMGMTMemoryinGB                    = 36GB                                  # RAM for the SDNMGMT Nested VM (Console, Router, Admincenter, DC, and wacvmode VMs). 36GB to host the always-on WAC vMode VM, which is pinned at 10GB static (installer enforces a hard >=8GB minimum).
     InternalSwitch                       = "InternalSwitch"                      # Name of internal switch that the SDN Lab VMs will use in Single Host mode. This only applies when using a single host.
 
 
@@ -63,7 +63,7 @@
     MEM_BGP                              = 4GB                                     # Memory provided for the BGP-ToR-Router
     MEM_Console                          = 4GB                                     # Memory provided for the Windows 10 Console VM
     MEM_WAC                              = 8GB                                     # Memory provided for the Windows Admin Center VM
-    MEM_vMode                            = 8GB                                     # Memory for the WAC Virtualization Mode VM
+    MEM_vMode                            = 10GB                                    # Memory for the WAC Virtualization Mode VM. Pinned STATIC and above the installer's hard 8GB minimum (a dynamic/8GB VM balloons below 8GB at idle and fails the install env check).
     MEM_IPSEC                            = 4GB                                     # Memory provided for the ipsec-target VM
 
     #Cluster S2D Storage Disk Size (per disk)

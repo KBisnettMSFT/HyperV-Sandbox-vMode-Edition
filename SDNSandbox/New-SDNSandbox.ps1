@@ -3242,12 +3242,14 @@ function New-WACvModeVM {
         }
         New-VM @params | Out-Null
 
+        # WAC vMode's installer enforces a hard >=8GB RAM minimum and reads the *currently assigned*
+        # memory. With Dynamic Memory the idle VM balloons well below 8GB before the installer runs, so
+        # its environment check fails and pops a modal "minimum requirements" dialog that hangs the
+        # silent install forever. Pin the RAM statically (MEM_vMode is set above 8GB) so the check always passes.
         $params = @{
             VMName               = $VMName
-            DynamicMemoryEnabled = $true
+            DynamicMemoryEnabled = $false
             StartupBytes         = $SDNConfig.MEM_vMode
-            MaximumBytes         = $SDNConfig.MEM_vMode
-            MinimumBytes         = 500mb
         }
         Set-VMMemory @params | Out-Null
         Set-VM -Name $VMName -AutomaticStartAction Start -AutomaticStopAction ShutDown | Out-Null
@@ -3375,10 +3377,14 @@ PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
             Write-Verbose "Installing WAC Virtualization Mode (silent). This typically takes 10-20 minutes on a nested VM."
             # Use a bounded watchdog instead of a plain -Wait: a silent installer that pops a hidden
             # modal dialog would otherwise block here forever with no signal. Poll with progress and
-            # fail with an actionable message after a generous timeout. Installer arguments are left
-            # exactly as-is so we never feed the external installer a switch it might reject.
+            # fail with an actionable message after a generous timeout.
+            #   /SUPPRESSMSGBOXES - auto-answer any [Code] MsgBox (e.g. the "minimum requirements not met"
+            #                       dialog) with its default button so a failed check aborts with an exit
+            #                       code instead of hanging the silent install forever.
+            #   /NORESTART        - never let the installer reboot the VM mid-deploy (that would drop our
+            #                       PowerShell Direct session). All are standard Inno Setup switches.
             $proc = Start-Process -FilePath $vModeInstaller `
-                -ArgumentList '/VERYSILENT', '/ConfigFile="C:\deploy\wac-config.ini"' -PassThru
+                -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/ConfigFile="C:\deploy\wac-config.ini"' -PassThru
             $timeoutMinutes = 30
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
             while (-not $proc.HasExited) {
@@ -4161,7 +4167,7 @@ Copy-Item $ConfigurationDataFile -Destination .\Applications\SCRIPTS -Force
 
 # Set VM Host Memory
 $totalPhysicalMemory = (Get-CimInstance -ClassName 'Cim_PhysicalMemory' | Measure-Object -Property Capacity -Sum).Sum / 1GB
-$availablePhysicalMemory = (([math]::Round(((((Get-Counter -Counter '\Hyper-V Dynamic Memory Balancer(System Balancer)\Available Memory For Balancing' -ComputerName $env:COMPUTERNAME).CounterSamples.CookedValue) / 1024) - 44) / 2))) * 1073741824
+$availablePhysicalMemory = (([math]::Round(((((Get-Counter -Counter '\Hyper-V Dynamic Memory Balancer(System Balancer)\Available Memory For Balancing' -ComputerName $env:COMPUTERNAME).CounterSamples.CookedValue) / 1024) - 48) / 2))) * 1073741824
 $SDNConfig.NestedVMMemoryinGB = $availablePhysicalMemory
 
 # Set-Credentials
