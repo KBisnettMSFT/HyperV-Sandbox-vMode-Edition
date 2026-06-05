@@ -3337,18 +3337,6 @@ function New-WACvModeVM {
 
             New-Item -ItemType Directory -Path C:\deploy -Force | Out-Null
 
-            # 0) Quiet down Microsoft Defender for the duration of the install. On a nested 4-vCPU VM,
-            #    real-time scanning of the 277MB installer + the thousands of files it extracts to %TEMP%
-            #    (plus PostgreSQL's initdb) throttles the install heavily (MsMpEng dominates CPU) and is the
-            #    main reason a clean install can run past a tight timeout. Best-effort; this is a throwaway lab.
-            Write-Verbose "Adding Defender exclusions for the WAC vMode install paths"
-            try {
-                Add-MpPreference -ExclusionPath 'C:\deploy', $env:TEMP, 'C:\Program Files\WindowsAdminCenter', 'C:\Program Files\PostgreSQL' -ErrorAction SilentlyContinue
-                Add-MpPreference -ExclusionProcess 'WindowsAdminCenterVirtualizationModePreview.exe', 'WindowsAdminCenterVirtualizationModePreview.tmp', 'postgres.exe', 'initdb.exe' -ErrorAction SilentlyContinue
-                Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
-            }
-            catch { Write-Verbose "Defender adjustment was best-effort and failed: $($_.Exception.Message)" }
-
             # 1) Visual C++ Redistributable prerequisite (winget if present, else direct download)
             Write-Verbose "Installing Visual C++ Redistributable prerequisite"
             $vcInstalled = $false
@@ -3386,7 +3374,7 @@ PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
             Set-Content -Path "C:\deploy\wac-config.ini" -Value $ini -Force -Encoding ASCII
 
             # 4) Silent install
-            Write-Verbose "Installing WAC Virtualization Mode (silent). On a nested VM this can take 30-60 min (PostgreSQL initdb + first-time setup)."
+            Write-Verbose "Installing WAC Virtualization Mode (silent). This typically takes 10-20 minutes on a nested VM."
             # Use a bounded watchdog instead of a plain -Wait: a silent installer that pops a hidden
             # modal dialog would otherwise block here forever with no signal. Poll with progress and
             # fail with an actionable message after a generous timeout.
@@ -3397,16 +3385,17 @@ PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
             #                       PowerShell Direct session). All are standard Inno Setup switches.
             $proc = Start-Process -FilePath $vModeInstaller `
                 -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/ConfigFile="C:\deploy\wac-config.ini"' -PassThru
-            $timeoutMinutes = 90
+            $timeoutMinutes = 30
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
             while (-not $proc.HasExited) {
 
                 if ($sw.Elapsed.TotalMinutes -ge $timeoutMinutes) {
 
                     try { $proc.Kill(); $proc.WaitForExit(5000) } catch {}
-                    throw ("WAC vMode install did not finish within $timeoutMinutes minutes. Inside '$VMName', " +
-                        "tail the newest Inno Setup log ('$env:TEMP\Setup Log*.txt') to find the stuck step, " +
-                        "then re-run New-WACvModeVM after deleting D:\VMs\$VMName.vhdx.")
+                    throw ("WAC vMode install did not finish within $timeoutMinutes minutes. A silent " +
+                        "installer that hangs this way has usually popped a hidden dialog. Inside '$VMName', " +
+                        "look for an installer process with a non-empty MainWindowTitle, then re-run " +
+                        "New-WACvModeVM after deleting D:\VMs\$VMName.vhdx.")
 
                 }
 
@@ -3418,9 +3407,6 @@ PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
             if ($proc.ExitCode -ne 0) {
                 throw "WAC vMode installer exited with non-zero code $($proc.ExitCode). Check the installer logs inside '$VMName'."
             }
-
-            # Re-enable Defender real-time monitoring now that the install is done (best-effort).
-            try { Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue } catch {}
 
             Write-Verbose "WAC vMode install finished. Reachable at https://$VMName.$fqdn"
         }
