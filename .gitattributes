@@ -1,0 +1,18 @@
+# Enforce consistent end-of-line normalization so per-change diffs stay clean.
+# Text files are stored LF in the repo and checked out per core.autocrlf
+# (CRLF on Windows). Explicit `text` overrides Git's binary auto-detection,
+# which can misfire on large UTF-8-BOM PowerShell files.
+* text=auto
+
+*.ps1   text
+*.psm1  text
+*.psd1  text
+*.md    text
+*.txt   text
+*.xml   text
+*.json  text
+
+*.vhdx  binary
+*.cer   binary
+*.png   binary
+*.jpg   binary
