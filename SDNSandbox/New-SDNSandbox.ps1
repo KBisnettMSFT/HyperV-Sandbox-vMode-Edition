@@ -3357,13 +3357,16 @@ function New-WACvModeVM {
             $vModeInstaller = "C:\deploy\WindowsAdminCenterVirtualizationModePreview.exe"
             Invoke-WebRequest -Uri $SDNConfig.vModeUri -OutFile $vModeInstaller -UseBasicParsing
 
-            # 3) Build the unattended INI. DPAPI password MUST be generated here (in-guest, this user).
+            # 3) Build the unattended INI. The config-file installer expects the PostgreSQL password
+            #    in PLAINTEXT; an earlier revision wrote a DPAPI blob (ConvertFrom-SecureString), which
+            #    is the wrong format for the INI and breaks WAC<->PostgreSQL auth. This is a throwaway
+            #    lab, so a plaintext password here is acceptable.
             Write-Verbose "Generating unattended install INI"
-            $encryptedPwd = $SDNConfig.SDNAdminPassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString
+            $pgPwd = $SDNConfig.SDNAdminPassword
             $ini = @"
 [AppSettings]
 PostgreSQLUsername=postgres
-PostgreSQLPassword=$encryptedPwd
+PostgreSQLPassword=$pgPwd
 PostgreSQLPort=$($SDNConfig.PostgreSQLPort)
 "@
             Set-Content -Path "C:\deploy\wac-config.ini" -Value $ini -Force -Encoding ASCII
