@@ -1,6 +1,7 @@
 BeforeAll {
     $script:repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     $script:coreScripts = @(
+        'SDNSandbox\New-HyperVSandbox.ps1',
         'SDNSandbox\New-SDNSandbox.ps1',
         'SDNSandbox\New-SDNVHDfromISO.ps1',
         'SDNSandbox\Resume-SDNSandbox.ps1',
@@ -24,5 +25,15 @@ Describe 'Tier 1: static analysis' {
             Invoke-ScriptAnalyzer -Path $f -Settings $script:settings -Severity Error
         }
         $findings | Should -BeNullOrEmpty -Because 'there are no pre-existing Error-severity issues; new ones must fail CI'
+    }
+
+    It 'every EXAMPLES scenario script parses with zero syntax errors' {
+        $exampleScripts = Get-ChildItem -Path (Join-Path $script:repo 'SDNSandbox\Applications\EXAMPLES') -Recurse -Filter *.ps1 -ErrorAction SilentlyContinue
+        @($exampleScripts).Count | Should -BeGreaterThan 0 -Because 'the EXAMPLES tracks should contain starter scripts to guard'
+        foreach ($f in $exampleScripts) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors) | Out-Null
+            $errors | Should -BeNullOrEmpty -Because "$($f.FullName) must parse cleanly"
+        }
     }
 }
