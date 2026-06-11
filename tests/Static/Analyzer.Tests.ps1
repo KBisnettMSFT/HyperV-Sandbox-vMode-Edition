@@ -1,6 +1,7 @@
 BeforeAll {
     $script:repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     $script:coreScripts = @(
+        'SDNSandbox\New-HyperVSandbox.ps1',
         'SDNSandbox\New-SDNSandbox.ps1',
         'SDNSandbox\New-SDNVHDfromISO.ps1',
         'SDNSandbox\Resume-SDNSandbox.ps1',

@@ -4,7 +4,7 @@
     WAC Virtualization Mode install failed) WITHOUT re-running the whole multi-hour deploy.
 
 .DESCRIPTION
-    In New-SDNSandbox.ps1 the top-level deploy runs, in order:
+    In New-HyperVSandbox.ps1 the top-level deploy runs, in order:
         ... host prep / NAT / SDN hosts / Set-SDNserver ...
         Set-SDNMGMT            <- builds SDNMGMT, DC, router, AdminCenter, and (LAST line) New-WACvModeVM
         New-HyperConvergedEnvironment   <- provisions Hyper-V logical switches / SET teams on the hosts
@@ -19,14 +19,14 @@
     It re-creates the session state the main script sets up top (config, credentials, WinRM TrustedHosts),
     loads the deploy functions via AST WITHOUT executing the main body, then runs the remaining steps.
 
-    Run from the PHYSICAL HOST (same place you ran New-SDNSandbox.ps1): the remaining functions connect to
+    Run from the PHYSICAL HOST (same place you ran New-HyperVSandbox.ps1): the remaining functions connect to
     the lab VMs (Admincenter, SDNHOST2) over WinRM by name, which only works from the host.
 
 .PARAMETER ConfigPath
     Path to SDNSandbox-Config.psd1. Defaults to .\SDNSandbox-Config.psd1 next to this script.
 
 .PARAMETER DeployScript
-    Path to New-SDNSandbox.ps1 (the function source). Defaults to .\New-SDNSandbox.ps1 next to this script.
+    Path to New-HyperVSandbox.ps1 (the function source). Defaults to .\New-HyperVSandbox.ps1 next to this script.
 
 .PARAMETER SkipShortcuts
     Skip creating the AdminCenter/WACvMode desktop shortcuts.
@@ -47,7 +47,7 @@ $VerbosePreference = 'Continue'
 $WarningPreference = 'SilentlyContinue'
 
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'SDNSandbox-Config.psd1' }
-if (-not $DeployScript) { $DeployScript = Join-Path $PSScriptRoot 'New-SDNSandbox.ps1' }
+if (-not $DeployScript) { $DeployScript = Join-Path $PSScriptRoot 'New-HyperVSandbox.ps1' }
 if (-not (Test-Path $ConfigPath)) { throw "Config file not found: $ConfigPath" }
 if (-not (Test-Path $DeployScript)) { throw "Deploy script not found: $DeployScript" }
 
