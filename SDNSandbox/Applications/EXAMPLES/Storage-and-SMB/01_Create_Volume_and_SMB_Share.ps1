@@ -46,23 +46,30 @@ else {
     Write-Host "Volume '$VolumeName' already exists - skipping creation." -ForegroundColor Yellow
 }
 
-# 3. Create a folder on the CSV and share it over SMB.
-$csvPath = Join-Path 'C:\ClusterStorage' $VolumeName
-if (-not (Test-Path -LiteralPath $csvPath)) {
-    # New-Volume names the CSV mount point after the volume; fall back to the newest CSV if needed.
-    $csv = Get-ClusterSharedVolume -Cluster $ClusterName | Sort-Object Name | Select-Object -Last 1
-    $csvPath = $csv.SharedVolumeInfo.FriendlyVolumeName
+# 3. Find the Cluster Shared Volume created for this volume, then create the SMB share on the CSV
+#    owner node (that is where the C:\ClusterStorage path physically exists). New-Volume creates a
+#    "Cluster Virtual Disk (<FriendlyName>)" resource, so match the CSV by the volume name.
+$csv = Get-ClusterSharedVolume -Cluster $ClusterName |
+    Where-Object { $_.Name -like "*$VolumeName*" } | Select-Object -First 1
+if (-not $csv) {
+    throw "Could not find a Cluster Shared Volume for '$VolumeName' on $ClusterName. Check 'Get-ClusterSharedVolume -Cluster $ClusterName'."
 }
+$csvPath   = $csv.SharedVolumeInfo.FriendlyVolumeName   # e.g. C:\ClusterStorage\Volume2
+$ownerNode = $csv.OwnerNode.Name
 $sharePath = Join-Path $csvPath $ShareName
-New-Item -ItemType Directory -Path $sharePath -Force | Out-Null
 
-if (-not (Get-SmbShare -Name $ShareName -CimSession $ClusterName -ErrorAction SilentlyContinue)) {
-    New-SmbShare -Name $ShareName -Path $sharePath -FullAccess 'contoso\Administrator' -CimSession $ClusterName | Out-Null
-    Write-Host "Created SMB share \\$ClusterName\$ShareName -> $sharePath" -ForegroundColor Green
-}
-else {
-    Write-Host "SMB share '$ShareName' already exists - skipping." -ForegroundColor Yellow
+# Create the folder and the SMB share on the CSV owner node (run remotely so the path resolves there).
+Invoke-Command -ComputerName $ownerNode -ArgumentList $sharePath, $ShareName -ScriptBlock {
+    param($Path, $Name)
+    New-Item -ItemType Directory -Path $Path -Force | Out-Null
+    if (-not (Get-SmbShare -Name $Name -ErrorAction SilentlyContinue)) {
+        New-SmbShare -Name $Name -Path $Path -FullAccess 'contoso\Administrator' | Out-Null
+        Write-Host "Created SMB share \\$env:COMPUTERNAME\$Name -> $Path" -ForegroundColor Green
+    }
+    else {
+        Write-Host "SMB share '$Name' already exists on $env:COMPUTERNAME - skipping." -ForegroundColor Yellow
+    }
 }
 
 Write-Host "`nInspect with:" -ForegroundColor Cyan
-Write-Host "  Get-SmbShare -CimSession $ClusterName ; Get-Volume -CimSession $ClusterName"
+Write-Host "  Get-SmbShare -CimSession $ownerNode ; Get-Volume -CimSession $ClusterName"
