@@ -1098,7 +1098,7 @@ function Resolve-Applications {
     $Core = (Get-ItemProperty $regKey).InstallationType -eq "Server Core"
     If ($Core) {
     
-        Write-Warning "You might not want to run the Azure Stack HCI OS Sandbox on Server Core, getting remote access to the AdminCenter VM may require extra configuration."
+        Write-Warning "You might not want to run the Hyper-V Sandbox on Server Core, getting remote access to the AdminCenter VM may require extra configuration."
         Start-Sleep -Seconds 5
 
     }
@@ -2999,7 +2999,7 @@ CertificateTemplate= WebServer
             # set links to scripts and sdn examples
             Write-Verbose "Creating Shortcut Scripts Folder"
             $TargetFile = "C:\SCRIPTS"
-            $ShortcutFile = "C:\Users\Public\Desktop\SDN Scripts.lnk"
+            $ShortcutFile = "C:\Users\Public\Desktop\Lab Scripts.lnk"
             $WScriptShell = New-Object -ComObject WScript.Shell
             $Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
             $Shortcut.TargetPath = $TargetFile
