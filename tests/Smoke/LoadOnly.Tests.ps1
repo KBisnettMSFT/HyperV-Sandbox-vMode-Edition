@@ -24,4 +24,10 @@ Describe 'Launcher is dot-source safe (guard skips deployment)' {
         # (relative config import, or a Hyper-V-only Get-Counter on a non-Hyper-V CI host).
         { . $launcher } | Should -Not -Throw
     }
+
+    It 'dot-sourcing the deprecation shim is a guarded no-op (does not deploy)' {
+        $shim = (Resolve-Path (Join-Path $PSScriptRoot '..\..\SDNSandbox\New-SDNSandbox.ps1')).Path
+        # Without the shim's own dot-source guard, this would invoke the engine and deploy (then throw).
+        { . $shim } | Should -Not -Throw
+    }
 }
