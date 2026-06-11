@@ -1,20 +1,23 @@
-# SDN Sandbox Guide (2/4/2025)
+# Hyper-V Sandbox — vMode Edition — Guide (updated 2026-06-11)
 
-SDN Sandbox is a series of scripts that creates a [HyperConverged](https://docs.microsoft.com/en-us/windows-server/hyperconverged/) environment using three nested Hyper-V Virtual Machines. The purpose of the SDN Sandbox is to provide operational training on Microsoft SDN as well as provide a development environment for DevOPs to assist in the creation and
-validation of SDN features without the time consuming process of setting up physical servers and network routers\switches.
+**Hyper-V Sandbox — vMode Edition** is a set of PowerShell scripts that create a [HyperConverged](https://docs.microsoft.com/en-us/windows-server/hyperconverged/) Windows Server lab using nested Hyper-V virtual machines. It provides operational training and a development/validation environment for modern Windows Server (2025 / vNext) datacenter features — **Active Directory, Failover Clustering, SMB & Storage Spaces Direct, Windows Admin Center (including Virtualization Mode / "vMode"), and Software-Defined Networking (SDN)** — without the time-consuming process of setting up physical servers, switches, and routers. SDN remains a first-class scenario (see the `SDNEXAMPLES` walkthroughs and `SDNExpress` tooling).
 
->**SDN Sandbox is not a production solution!** SDN Sandbox's scripts have been modified to work in a limited resource environment. Because of this, it is not fault tolerant, is not designed to be highly available, and lacks the nimble speed of a **real** Microsoft SDN deployment.
+>**This is not a production solution!** The Hyper-V Sandbox scripts are tuned for a limited-resource lab. The environment is not fault tolerant, not highly available, and slower than a real deployment. Never use real credentials or production networks.
 
-Also, be aware that SDN Sandbox is **NOT** designed to be managed by System Center Virtual Machine Manager (SCVMM), but by Windows Admin Center. 
+Also note that the lab is managed by **Windows Admin Center** (not System Center Virtual Machine Manager / SCVMM).
+
+### A note on names
+
+The product is **Hyper-V Sandbox — vMode Edition**, but some internal identifiers keep their historical `SDN` prefix for stability — the VM names (`SDNMGMT`, `SDNHOST1/2`), the `SDN*` config keys, and the `SDNSandbox-Config.psd1` filename. The `SDNEXAMPLES`/`SDNExpress` content keeps "SDN" because that is the correct technical term. 
 
 ## History
 
-SDN Sandbox is a *really* fast refactoring of scripts that I wrote for myself to rapidly create online labs for SDN using SCVMM. This was initially created in 2016 with the most recent being an update in 2025.
+This project began in 2016 as a fast way to spin up online labs for **Microsoft SDN** (originally via SCVMM). It has since grown into a broader **Hyper-V Sandbox** for learning and validating Windows Server virtualization — Active Directory, Failover Clustering, SMB, Storage, and Windows Admin Center vMode — while keeping SDN at the forefront.
 
 
 ## Quick Start (TLDR)
 
-You probably are not going to read the requirements listed below, so here are the steps to get SDN Sandbox up and running on a **single host** :
+You probably are not going to read the requirements listed below, so here are the steps to get the Hyper-V Sandbox up and running on a **single host** :
 
 1. Download and unzip this solution to a drive on a x86 System with at least 64gb of RAM, 2025 (or higher) Hyper-V Installed, and , optionally, a External Switch attached to a network that can route to the Internet and provides DHCP.
 
@@ -44,7 +47,7 @@ You probably are not going to read the requirements listed below, so here are th
 
 ## Configuration Overview
 
-SDN Sandbox will automatically create and configure the following:
+The Hyper-V Sandbox will automatically create and configure the following:
 
 * Active Directory virtual machine
 * Windows Admin Center virtual machine
@@ -57,7 +60,7 @@ SDN Sandbox will automatically create and configure the following:
 
 ## Hardware Prerequisites
 
-The SDN Sandbox can run on either a single host or up to 4 Hyper-V hosts connected with either a dumb hub, direct connection (between 2 hosts), unmanaged switch, or a managed switch with the VLANs attached trunked to each used port.
+The Hyper-V Sandbox can run on either a single host or up to 4 Hyper-V hosts connected with either a dumb hub, direct connection (between 2 hosts), unmanaged switch, or a managed switch with the VLANs attached trunked to each used port.
 
 |  Number of Hyper-V Hosts | Memory per Host   | HD Available Free Space   | Processor   |  Hyper-V Switch Type |
 |---|---|---|---|---|
