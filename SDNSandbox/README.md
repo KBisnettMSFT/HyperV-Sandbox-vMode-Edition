@@ -1,20 +1,23 @@
-# SDN Sandbox Guide (2/4/2025)
+# Hyper-V Sandbox — vMode Edition — Guide (updated 2026-06-11)
 
-SDN Sandbox is a series of scripts that creates a [HyperConverged](https://docs.microsoft.com/en-us/windows-server/hyperconverged/) environment using three nested Hyper-V Virtual Machines. The purpose of the SDN Sandbox is to provide operational training on Microsoft SDN as well as provide a development environment for DevOPs to assist in the creation and
-validation of SDN features without the time consuming process of setting up physical servers and network routers\switches.
+**Hyper-V Sandbox — vMode Edition** is a set of PowerShell scripts that create a [HyperConverged](https://docs.microsoft.com/en-us/windows-server/hyperconverged/) Windows Server lab using nested Hyper-V virtual machines. It provides operational training and a development/validation environment for modern Windows Server (2025 / vNext) datacenter features — **Active Directory, Failover Clustering, SMB & Storage Spaces Direct, Windows Admin Center (including Virtualization Mode / "vMode"), and Software-Defined Networking (SDN)** — without the time-consuming process of setting up physical servers, switches, and routers. SDN remains a first-class scenario (see the `SDNEXAMPLES` walkthroughs and `SDNExpress` tooling).
 
->**SDN Sandbox is not a production solution!** SDN Sandbox's scripts have been modified to work in a limited resource environment. Because of this, it is not fault tolerant, is not designed to be highly available, and lacks the nimble speed of a **real** Microsoft SDN deployment.
+>**This is not a production solution!** The Hyper-V Sandbox scripts are tuned for a limited-resource lab. The environment is not fault tolerant, not highly available, and slower than a real deployment. Never use real credentials or production networks.
 
-Also, be aware that SDN Sandbox is **NOT** designed to be managed by System Center Virtual Machine Manager (SCVMM), but by Windows Admin Center. 
+Also note that the lab is managed by **Windows Admin Center** (not System Center Virtual Machine Manager / SCVMM).
+
+### A note on names
+
+The product is **Hyper-V Sandbox — vMode Edition**, but some internal identifiers keep their historical `SDN` prefix for stability — the VM names (`SDNMGMT`, `SDNHOST1/2`), the `SDN*` config keys, and the `SDNSandbox-Config.psd1` filename. The `SDNEXAMPLES`/`SDNExpress` content keeps "SDN" because that is the correct technical term. 
 
 ## History
 
-SDN Sandbox is a *really* fast refactoring of scripts that I wrote for myself to rapidly create online labs for SDN using SCVMM. This was initially created in 2016 with the most recent being an update in 2025.
+This project began in 2016 as a fast way to spin up online labs for **Microsoft SDN** (originally via SCVMM). It has since grown into a broader **Hyper-V Sandbox** for learning and validating Windows Server virtualization — Active Directory, Failover Clustering, SMB, Storage, and Windows Admin Center vMode — while keeping SDN at the forefront.
 
 
 ## Quick Start (TLDR)
 
-You probably are not going to read the requirements listed below, so here are the steps to get SDN Sandbox up and running on a **single host** :
+You probably are not going to read the requirements listed below, so here are the steps to get the Hyper-V Sandbox up and running on a **single host** :
 
 1. Download and unzip this solution to a drive on a x86 System with at least 64gb of RAM, 2025 (or higher) Hyper-V Installed, and , optionally, a External Switch attached to a network that can route to the Internet and provides DHCP.
 
@@ -30,7 +33,7 @@ You probably are not going to read the requirements listed below, so here are th
     * Set ``HostVMPath`` where your VHDX files will reside. (*Ensure that there is at least 250gb of free space!*)
     * Optionally, set the name of your external switch that has access to the internet in the ``natExternalVMSwitchName = `` setting and optionally the VLAN for it in the ``natVLANID``. If you don't want Internet access, set ``natConfigure`` to ``$false``.
 
-4. On the Hyper-V Host, open up a PowerShell console (with admin rights) and navigate to the ``SDNSandbox`` folder and run ``.\New-SDNSandbox``.
+4. On the Hyper-V Host, open up a PowerShell console (with admin rights) and navigate to the ``SDNSandbox`` folder and run ``.\New-HyperVSandbox``. (The legacy ``.\New-SDNSandbox`` name still works via a deprecation shim.)
 
 7. It should take a up to 2 hours to deploy.
 
@@ -44,7 +47,7 @@ You probably are not going to read the requirements listed below, so here are th
 
 ## Configuration Overview
 
-SDN Sandbox will automatically create and configure the following:
+The Hyper-V Sandbox will automatically create and configure the following:
 
 * Active Directory virtual machine
 * Windows Admin Center virtual machine
@@ -55,9 +58,22 @@ SDN Sandbox will automatically create and configure the following:
 * VLAN to provide testing for L3 Gateway Connections
 
 
+## Learning scenarios
+
+Beyond SDN, the lab surfaces guided example tracks (copied to ``C:\EXAMPLES`` on the AdminCenter VM, each with a matching desktop shortcut):
+
+| Track | Desktop shortcut | Folder |
+|---|---|---|
+| Active Directory | **Active Directory Examples** | ``Applications/EXAMPLES/ActiveDirectory`` |
+| Failover Clustering | **Clustering Examples** | ``Applications/EXAMPLES/FailoverClustering`` |
+| Storage & SMB | **Storage and SMB Examples** | ``Applications/EXAMPLES/Storage-and-SMB`` |
+| Software-Defined Networking | **SDN Examples** | ``Applications/SDNEXAMPLES`` |
+
+Each track has a README and a starter exercise. The **Failover Cluster Manager**, **DNS**, and **Active Directory Users and Computers** desktop shortcuts complement them.
+
 ## Hardware Prerequisites
 
-The SDN Sandbox can run on either a single host or up to 4 Hyper-V hosts connected with either a dumb hub, direct connection (between 2 hosts), unmanaged switch, or a managed switch with the VLANs attached trunked to each used port.
+The Hyper-V Sandbox can run on either a single host or up to 4 Hyper-V hosts connected with either a dumb hub, direct connection (between 2 hosts), unmanaged switch, or a managed switch with the VLANs attached trunked to each used port.
 
 |  Number of Hyper-V Hosts | Memory per Host   | HD Available Free Space   | Processor   |  Hyper-V Switch Type |
 |---|---|---|---|---|
@@ -103,7 +119,7 @@ If you wish the environment to have internet access in the Sandbox, create a VMs
 
 ``New-SDNVHDfromISO.ps1`` builds the two parent images and slipstreams the newest Windows updates into them. Because every host and SDN virtual machine in the lab is a Hyper-V differencing child (or a direct copy) of GUI.vhdx / CORE.vhdx, patching these two images is all that is required for **every** VM in the sandbox to be up to date.
 
-> For a full step-by-step runbook (prerequisites, offline builds, verification, and troubleshooting) see [New-SDNVHDfromISO-Instructions.md](./New-SDNVHDfromISO-Instructions.md). The script runs a pre-flight check and stops with a clear message if a prerequisite (elevation, Hyper-V/DISM cmdlets, or free disk space) is missing.
+> For a full step-by-step runbook (prerequisites, offline builds, verification, and troubleshooting) see [New-SDNVHDfromISO-Instructions.md](./New-SDNVHDfromISO-Instructions.md). The script runs a pre-flight check and stops with a clear message if a prerequisite (elevation, Hyper-V/DISM cmdlets, or free disk space) is missing. To target a **Windows Server vNext / Insider** build instead of 2025, see *"Testing Windows Server vNext / Insider preview builds"* in that runbook.
 
 Run from an elevated Windows PowerShell console on the Hyper-V host:
 
@@ -126,7 +142,7 @@ Useful parameters:
 | ``-WorkPath`` | ``<launchDrive>\SDNVHDBuild`` | Cache folder for the downloaded ISO, updates and DISM scratch (reused across runs). Defaults to the drive the script was launched from, not C:. |
 | ``-Parallel`` | *(off)* | Build ``GUI.vhdx`` and ``CORE.vhdx`` concurrently (only when both are selected) to use idle CPU/disk and cut wall-clock time. Trades the per-image live progress bar for periodic heartbeat updates. |
 
->**Note:** Build artifacts stay on the **drive the script was launched from** by default (not C:). The ISO/updates/scratch go to ``<launchDrive>\SDNVHDBuild`` and the parent images to ``<launchDrive>\SDNVHDs\``. The output paths come from ``guiVHDXPath`` / ``coreVHDXPath`` in ``SDNSandbox-Config.psd1``; if those point at another drive the script re-bases them onto the launch drive and **updates the config in place** (comments preserved) so ``New-SDNSandbox.ps1`` finds the images in the same place.
+>**Note:** Build artifacts stay on the **drive the script was launched from** by default (not C:). The ISO/updates/scratch go to ``<launchDrive>\SDNVHDBuild`` and the parent images to ``<launchDrive>\SDNVHDs\``. The output paths come from ``guiVHDXPath`` / ``coreVHDXPath`` in ``SDNSandbox-Config.psd1``; if those point at another drive the script re-bases them onto the launch drive and **updates the config in place** (comments preserved) so ``New-HyperVSandbox.ps1`` finds the images in the same place.
 
 >**Note:** The auto-downloaded ISO is the Windows Server 2025 **Evaluation** edition (180-day). The VHDX is built natively with in-box Hyper-V and DISM cmdlets, and the latest cumulative update (plus any Server 2025 **checkpoint** update) is downloaded by querying the Microsoft Update Catalog directly - **no third-party PowerShell modules are required**. If the catalog lookup fails, the build retries and then continues with a warning rather than failing - supply ``-UpdatesPath`` to guarantee a specific update is injected.
 

@@ -1,12 +1,19 @@
-# SDN Sandbox 
+# Hyper-V Sandbox — vMode Edition
 
 ![CI](https://github.com/KBisnettMSFT/HyperV-Sandbox-vMode-Edition/actions/workflows/ci.yml/badge.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-SDN Sandbox is a series of scripts that creates a [HyperConverged](https://docs.microsoft.com/en-us/windows-server/hyperconverged/) environment using two nested Hyper-V Virtual Machines. The purpose of the SDN Sandbox is to provide operational training on Microsoft SDN as well as provide a development environment for DevOPs to assist in the creation and
-validation of SDN features without the time consuming process of setting up physical servers and network routers\switches.
+**Hyper-V Sandbox — vMode Edition** is a set of PowerShell scripts that build a complete, disposable Windows Server datacenter lab inside nested Hyper-V virtual machines (single-host quick start, scaling up to four physical hosts). Learn and validate modern Windows Server (2025 / vNext) capabilities — **Active Directory, Failover Clustering, SMB & Storage Spaces Direct, Windows Admin Center (including Virtualization Mode / "vMode"), and Software-Defined Networking (SDN)** — without standing up physical servers, switches, or routers.
 
->**SDN Sandbox is not a production solution!** SDN Sandbox's scripts have been modified to work in a limited resource environment. Because of this, it is not fault tolerant, is not designed to be highly available, and lacks the nimble speed of a **real** Microsoft SDN deployment.
+SDN remains a first-class scenario: the lab supports full Microsoft SDN provisioning (optional, toggled by `ProvisionLegacyNC`) and ships the `SDNEXAMPLES` walkthroughs and `SDNExpress` tooling for operational training and feature validation.
 
+> **History:** Originally created in 2016 to showcase Microsoft SDN, the project has grown into a general-purpose virtualization sandbox. SDN stays front and center while the lab now also surfaces Active Directory, Failover Clustering, Storage/SMB, and Windows Admin Center vMode scenarios.
 
-![alt text](SDNSandbox/res/SDNSandbox.png "Graphic of a fully deployed SDN Sandbox")
+> **Not a production solution!** These scripts are tuned to run in a limited-resource lab. The environment is not fault tolerant, not highly available, and lacks the performance of a real deployment. Never use it with real credentials or on production networks.
+
+![A fully deployed Hyper-V Sandbox lab](SDNSandbox/res/HyperVSandbox.png "Graphic of a fully deployed Hyper-V Sandbox")
+
+## A note on names
+
+The product is **Hyper-V Sandbox — vMode Edition**, but some internal identifiers keep their historical `SDN` prefix for stability — the VM names (`SDNMGMT`, `SDNHOST1/2`), the `SDN*` configuration keys, and the `SDNSandbox-Config.psd1` filename. The `SDNEXAMPLES` and `SDNExpress` content keeps "SDN" because that is the correct technical term. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 

@@ -4,7 +4,7 @@
   executing its main deployment flow. Mirrors the AST-extraction technique already used by
   Resume-SDNSandbox.ps1, so the launcher itself needs no change.
 .PARAMETER Path
-  Full path to New-SDNSandbox.ps1.
+  Full path to New-HyperVSandbox.ps1.
 .OUTPUTS
   The names of the functions that were defined (so smoke tests can assert coverage).
 .EXAMPLE

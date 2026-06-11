@@ -4,7 +4,7 @@
     failed/partial WAC install and re-runs ONLY the in-guest installer - without rebuilding the VM.
 
 .DESCRIPTION
-    New-WACvModeVM (in New-SDNSandbox.ps1) does two distinct things:
+    New-WACvModeVM (in New-HyperVSandbox.ps1) does two distinct things:
         1. Builds the 'wacvmode' VM on SDNMGMT (differencing disk, unattend/domain-join, NIC/MTU/gateway,
            partition resize) - this is slow and only needs to happen once.
         2. Installs WAC Virtualization Mode INSIDE that VM (VC++ redist, download installer, generate the
@@ -23,7 +23,7 @@
                  bounded watchdog. The already-downloaded installer / VC++ redist are reused when present.
         PHASE 4  Re-verify (PostgreSQL service, ports 443/5432, WAC reachable).
 
-    Run this from the PHYSICAL HOST (the same place you run New-SDNSandbox.ps1). It reaches the nested
+    Run this from the PHYSICAL HOST (the same place you run New-HyperVSandbox.ps1). It reaches the nested
     vMode VM via host -> SDNMGMT (local admin) -> wacvmode (domain admin), exactly like New-WACvModeVM.
 
 .PARAMETER ConfigPath

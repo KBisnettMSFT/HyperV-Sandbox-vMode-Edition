@@ -236,7 +236,7 @@ Each phase is independently shippable; Phase 0 stands alone as a valuable founda
 
 §9 is the full testing strategy; this is the quick gate checklist.
 - **Every PR (CI, Tier 1+2):** all `*.ps1`/`*.psm1` parse clean; `Invoke-ScriptAnalyzer` against `PSScriptAnalyzerSettings.psd1` shows no *new* errors; `Import-PowerShellDataFile SDNSandbox-Config.psd1` succeeds; Pester unit tests for the pure helpers pass.
-- **Shim:** dot-sourcing / `-WhatIf` of `New-SDNSandbox.ps1` forwards to the new launcher without running a deploy.
+- **Shim:** dot-sourcing `New-SDNSandbox.ps1` is a guarded no-op (never deploys); executing it warns and forwards to `New-HyperVSandbox.ps1`.
 - **Load-only smoke (Tier 3):** dot-sourcing `New-HyperVSandbox.ps1` defines all expected functions and does **not** execute the main flow.
 - **Before merge to master / release (Tier 3, manual):** full nested-Hyper-V deploy completes; desktop shows new shortcuts; banner shows new name; SDN examples present; `wacvmode` reachable.
 
