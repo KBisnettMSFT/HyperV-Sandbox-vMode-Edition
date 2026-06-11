@@ -29,6 +29,7 @@ Describe 'Tier 1: static analysis' {
 
     It 'every EXAMPLES scenario script parses with zero syntax errors' {
         $exampleScripts = Get-ChildItem -Path (Join-Path $script:repo 'SDNSandbox\Applications\EXAMPLES') -Recurse -Filter *.ps1 -ErrorAction SilentlyContinue
+        @($exampleScripts).Count | Should -BeGreaterThan 0 -Because 'the EXAMPLES tracks should contain starter scripts to guard'
         foreach ($f in $exampleScripts) {
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors) | Out-Null
