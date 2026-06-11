@@ -1,5 +1,5 @@
 BeforeAll {
-    $launcher = (Resolve-Path (Join-Path $PSScriptRoot '..\..\SDNSandbox\New-SDNSandbox.ps1')).Path
+    $launcher = (Resolve-Path (Join-Path $PSScriptRoot '..\..\SDNSandbox\New-HyperVSandbox.ps1')).Path
     . (Join-Path $PSScriptRoot '..\Helpers\Load-SandboxFunctions.ps1') -Path $launcher | Out-Null
 }
 

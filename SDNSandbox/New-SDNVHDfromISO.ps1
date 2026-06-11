@@ -3,7 +3,7 @@
 # Version 2.3.0
 
 .SYNOPSIS
-    Builds the GUI.vhdx and CORE.vhdx parent images that New-SDNSandbox.ps1 requires,
+    Builds the GUI.vhdx and CORE.vhdx parent images that New-HyperVSandbox.ps1 requires,
     and (by default) injects the latest Windows Server 2025 cumulative update so that
     every host and SDN VM in the lab inherits the patches.
 
@@ -40,7 +40,7 @@
     * Run from an elevated Windows PowerShell console on the Hyper-V host.
     * The parent images are produced from a generalized WIM and must remain generalized and
       unbooted; the children specialize on first boot via the unattend.xml that
-      New-SDNSandbox.ps1 injects.
+      New-HyperVSandbox.ps1 injects.
 #>
 
 [CmdletBinding()]
@@ -924,7 +924,7 @@ function Convert-ToParentVHDX {
 
         # 9. On success, compact the dynamic VHDX to reclaim the space freed by /ResetBase. Full mode
         #    needs the disk mounted read-only; this is best-effort so a compaction hiccup never fails
-        #    an otherwise-good build. Smaller parents make every downstream copy in New-SDNSandbox.ps1
+        #    an otherwise-good build. Smaller parents make every downstream copy in New-HyperVSandbox.ps1
         #    (host, SDNMGMT base, and each nested VM) faster.
         if ($success -and (Test-Path $OutPath)) {
             try {
@@ -1291,7 +1291,7 @@ if (-not $PSBoundParameters.ContainsKey('WorkPath') -or [string]::IsNullOrWhiteS
 Write-Verbose "Launch drive: $launchRoot   Work/temp folder: $WorkPath"
 
 # Resolve output paths from the configuration file, re-based onto the launch drive so the
-# final images land in <launchDrive>\SDNVHDs and the deployment (New-SDNSandbox.ps1, which
+# final images land in <launchDrive>\SDNVHDs and the deployment (New-HyperVSandbox.ps1, which
 # reads the same config) finds them in the same place.
 $guiOut = $null
 $coreOut = $null

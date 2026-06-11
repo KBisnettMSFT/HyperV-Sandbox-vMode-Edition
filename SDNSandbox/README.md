@@ -33,7 +33,7 @@ You probably are not going to read the requirements listed below, so here are th
     * Set ``HostVMPath`` where your VHDX files will reside. (*Ensure that there is at least 250gb of free space!*)
     * Optionally, set the name of your external switch that has access to the internet in the ``natExternalVMSwitchName = `` setting and optionally the VLAN for it in the ``natVLANID``. If you don't want Internet access, set ``natConfigure`` to ``$false``.
 
-4. On the Hyper-V Host, open up a PowerShell console (with admin rights) and navigate to the ``SDNSandbox`` folder and run ``.\New-SDNSandbox``.
+4. On the Hyper-V Host, open up a PowerShell console (with admin rights) and navigate to the ``SDNSandbox`` folder and run ``.\New-HyperVSandbox``. (The legacy ``.\New-SDNSandbox`` name still works via a deprecation shim.)
 
 7. It should take a up to 2 hours to deploy.
 
@@ -129,7 +129,7 @@ Useful parameters:
 | ``-WorkPath`` | ``<launchDrive>\SDNVHDBuild`` | Cache folder for the downloaded ISO, updates and DISM scratch (reused across runs). Defaults to the drive the script was launched from, not C:. |
 | ``-Parallel`` | *(off)* | Build ``GUI.vhdx`` and ``CORE.vhdx`` concurrently (only when both are selected) to use idle CPU/disk and cut wall-clock time. Trades the per-image live progress bar for periodic heartbeat updates. |
 
->**Note:** Build artifacts stay on the **drive the script was launched from** by default (not C:). The ISO/updates/scratch go to ``<launchDrive>\SDNVHDBuild`` and the parent images to ``<launchDrive>\SDNVHDs\``. The output paths come from ``guiVHDXPath`` / ``coreVHDXPath`` in ``SDNSandbox-Config.psd1``; if those point at another drive the script re-bases them onto the launch drive and **updates the config in place** (comments preserved) so ``New-SDNSandbox.ps1`` finds the images in the same place.
+>**Note:** Build artifacts stay on the **drive the script was launched from** by default (not C:). The ISO/updates/scratch go to ``<launchDrive>\SDNVHDBuild`` and the parent images to ``<launchDrive>\SDNVHDs\``. The output paths come from ``guiVHDXPath`` / ``coreVHDXPath`` in ``SDNSandbox-Config.psd1``; if those point at another drive the script re-bases them onto the launch drive and **updates the config in place** (comments preserved) so ``New-HyperVSandbox.ps1`` finds the images in the same place.
 
 >**Note:** The auto-downloaded ISO is the Windows Server 2025 **Evaluation** edition (180-day). The VHDX is built natively with in-box Hyper-V and DISM cmdlets, and the latest cumulative update (plus any Server 2025 **checkpoint** update) is downloaded by querying the Microsoft Update Catalog directly - **no third-party PowerShell modules are required**. If the catalog lookup fails, the build retries and then continues with a warning rather than failing - supply ``-UpdatesPath`` to guarantee a specific update is injected.
 

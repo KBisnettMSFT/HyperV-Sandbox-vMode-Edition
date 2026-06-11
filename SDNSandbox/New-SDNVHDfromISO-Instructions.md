@@ -1,7 +1,7 @@
 # Building the Hyper-V Sandbox parent images — `New-SDNVHDfromISO.ps1`
 
 This is the step-by-step runbook for creating the two parent VHDX images
-(`GUI.vhdx` and `CORE.vhdx`) that `New-SDNSandbox.ps1` requires. The script also
+(`GUI.vhdx` and `CORE.vhdx`) that `New-HyperVSandbox.ps1` requires. The script also
 slipstreams the newest Windows cumulative update into both images.
 
 > **Why this matters:** every host VM (SDNMGMT, SDNHOST1/2, the DC, the BGP "Top of
@@ -58,7 +58,7 @@ This will:
 > scratch go to `<launchDrive>\SDNVHDBuild`, and the parent images go to `<launchDrive>\SDNVHDs\`.
 > If `SDNSandbox-Config.psd1` points the image paths at a different drive (e.g. the default
 > `C:\SDNVHDs\`), the script **re-bases them onto the launch drive and updates the config
-> in place** (comments preserved) so the deployment — `New-SDNSandbox.ps1`, which reads the
+> in place** (comments preserved) so the deployment — `New-HyperVSandbox.ps1`, which reads the
 > same config — finds the images in the same place. Override the work folder with `-WorkPath`.
 
 `-Verbose` is recommended so you can watch progress; expect the whole run to take
@@ -193,7 +193,7 @@ Dismount-VHD -Path 'C:\SDNVHDs\GUI.vhdx'
 ```
 
 After both images exist at the configured paths, continue with the main deployment:
-`.\New-SDNSandbox.ps1` (see `README.md`).
+`.\New-HyperVSandbox.ps1` (see `README.md`).
 
 ---
 
