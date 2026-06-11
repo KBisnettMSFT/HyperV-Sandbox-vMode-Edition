@@ -11,7 +11,7 @@ SDN remains a first-class scenario: the lab supports full Microsoft SDN provisio
 
 > **Not a production solution!** These scripts are tuned to run in a limited-resource lab. The environment is not fault tolerant, not highly available, and lacks the performance of a real deployment. Never use it with real credentials or on production networks.
 
-![A fully deployed Hyper-V Sandbox lab](SDNSandbox/res/SDNSandbox.png "Graphic of a fully deployed Hyper-V Sandbox")
+![A fully deployed Hyper-V Sandbox lab](SDNSandbox/res/HyperVSandbox.png "Graphic of a fully deployed Hyper-V Sandbox")
 
 ## A note on names
 
