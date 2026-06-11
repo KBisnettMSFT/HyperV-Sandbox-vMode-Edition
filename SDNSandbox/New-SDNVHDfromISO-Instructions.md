@@ -1,4 +1,4 @@
-# Building the SDN Sandbox parent images — `New-SDNVHDfromISO.ps1`
+# Building the Hyper-V Sandbox parent images — `New-SDNVHDfromISO.ps1`
 
 This is the step-by-step runbook for creating the two parent VHDX images
 (`GUI.vhdx` and `CORE.vhdx`) that `New-SDNSandbox.ps1` requires. The script also
