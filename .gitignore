@@ -1,0 +1,17 @@
+# --- Build / runtime artifacts (never commit large binaries) ---
+*.vhdx
+*.vhd
+*.iso
+*.har
+SDNVHDBuild/
+SDNVHDs/
+**/TempVModeMount/
+
+# --- Test output ---
+**/testResults.xml
+
+# --- Editor / OS cruft ---
+.vs/
+*.user
+Thumbs.db
+.DS_Store
