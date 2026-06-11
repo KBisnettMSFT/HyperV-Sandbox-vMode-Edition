@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, 'feature/**' ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    name: Lint + Pester (${{ matrix.shell }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [ pwsh, powershell ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run CI test suite
+        shell: ${{ matrix.shell }}
+        run: .\tests\Invoke-CI.ps1
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pester-results-${{ matrix.shell }}
+          path: tests/testResults.xml
+          if-no-files-found: ignore
