@@ -58,6 +58,19 @@ The Hyper-V Sandbox will automatically create and configure the following:
 * VLAN to provide testing for L3 Gateway Connections
 
 
+## Learning scenarios
+
+Beyond SDN, the lab surfaces guided example tracks (copied to ``C:\EXAMPLES`` on the AdminCenter VM, each with a matching desktop shortcut):
+
+| Track | Desktop shortcut | Folder |
+|---|---|---|
+| Active Directory | **Active Directory Examples** | ``Applications/EXAMPLES/ActiveDirectory`` |
+| Failover Clustering | **Clustering Examples** | ``Applications/EXAMPLES/FailoverClustering`` |
+| Storage & SMB | **Storage and SMB Examples** | ``Applications/EXAMPLES/Storage-and-SMB`` |
+| Software-Defined Networking | **SDN Examples** | ``Applications/SDNEXAMPLES`` |
+
+Each track has a README and a starter exercise. The **Failover Cluster Manager**, **DNS**, and **Active Directory Users and Computers** desktop shortcuts complement them.
+
 ## Hardware Prerequisites
 
 The Hyper-V Sandbox can run on either a single host or up to 4 Hyper-V hosts connected with either a dumb hub, direct connection (between 2 hosts), unmanaged switch, or a managed switch with the VLANs attached trunked to each used port.

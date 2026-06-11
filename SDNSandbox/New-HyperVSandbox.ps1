@@ -880,6 +880,7 @@ $SDNMGMTProdKey
             Copy-LargeFile -Source $coreVHDXPath -Destination ($MountedDrive + ":\VMs\Base\CORE.vhdx")
             Copy-Item -Path .\Applications\SCRIPTS -Destination ($MountedDrive + ":\VmConfigs") -Recurse -Force
             Copy-Item -Path .\Applications\SDNEXAMPLES -Destination ($MountedDrive + ":\VmConfigs") -Recurse -Force
+            Copy-Item -Path .\Applications\EXAMPLES -Destination ($MountedDrive + ":\VmConfigs") -Recurse -Force
             #Copy-Item -Path '.\Applications\Windows Admin Center' -Destination ($MountedDrive + ":\VmConfigs") -Recurse -Force  
 
         }       
@@ -2450,6 +2451,7 @@ function New-AdminCenterVM {
         # Copy-Item 'C:\VMConfigs\Windows Admin Center' -Destination C:\TempWACMount\ -Recurse -Force
         Copy-Item C:\VMConfigs\SCRIPTS -Destination C:\TempWACMount -Recurse -Force
         Copy-Item C:\VMConfigs\SDNEXAMPLES -Destination C:\TempWACMount -Recurse -Force
+        Copy-Item C:\VMConfigs\EXAMPLES -Destination C:\TempWACMount -Recurse -Force
         New-Item -Path C:\TempWACMount\VHDs -ItemType Directory -Force | Out-Null
         # Unbuffered (/J) copy of the large parent VHDXs - faster and avoids thrashing the file cache
         # inside SDNMGMT while it provisions the nested lab. Falls back to Copy-Item on robocopy failure.
@@ -3008,6 +3010,32 @@ CertificateTemplate= WebServer
             Write-Verbose "Creating Shortcut Scripts Folder for SDN Examples"
             $TargetFile = "C:\SDNEXAMPLES"
             $ShortcutFile = "C:\Users\Public\Desktop\SDN Examples.lnk"
+            $WScriptShell = New-Object -ComObject WScript.Shell
+            $Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+            $Shortcut.TargetPath = $TargetFile
+            $Shortcut.Save()
+
+            # Scenario example tracks (Active Directory, Failover Clustering, Storage & SMB) copied
+            # to C:\EXAMPLES. SDN stays a first-class track via the SDN Examples shortcut above.
+            Write-Verbose "Creating Shortcut for Active Directory Examples"
+            $TargetFile = "C:\EXAMPLES\ActiveDirectory"
+            $ShortcutFile = "C:\Users\Public\Desktop\Active Directory Examples.lnk"
+            $WScriptShell = New-Object -ComObject WScript.Shell
+            $Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+            $Shortcut.TargetPath = $TargetFile
+            $Shortcut.Save()
+
+            Write-Verbose "Creating Shortcut for Failover Clustering Examples"
+            $TargetFile = "C:\EXAMPLES\FailoverClustering"
+            $ShortcutFile = "C:\Users\Public\Desktop\Clustering Examples.lnk"
+            $WScriptShell = New-Object -ComObject WScript.Shell
+            $Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
+            $Shortcut.TargetPath = $TargetFile
+            $Shortcut.Save()
+
+            Write-Verbose "Creating Shortcut for Storage and SMB Examples"
+            $TargetFile = "C:\EXAMPLES\Storage-and-SMB"
+            $ShortcutFile = "C:\Users\Public\Desktop\Storage and SMB Examples.lnk"
             $WScriptShell = New-Object -ComObject WScript.Shell
             $Shortcut = $WScriptShell.CreateShortcut($ShortcutFile)
             $Shortcut.TargetPath = $TargetFile

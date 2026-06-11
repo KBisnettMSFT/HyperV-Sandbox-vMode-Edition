@@ -26,4 +26,13 @@ Describe 'Tier 1: static analysis' {
         }
         $findings | Should -BeNullOrEmpty -Because 'there are no pre-existing Error-severity issues; new ones must fail CI'
     }
+
+    It 'every EXAMPLES scenario script parses with zero syntax errors' {
+        $exampleScripts = Get-ChildItem -Path (Join-Path $script:repo 'SDNSandbox\Applications\EXAMPLES') -Recurse -Filter *.ps1 -ErrorAction SilentlyContinue
+        foreach ($f in $exampleScripts) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors) | Out-Null
+            $errors | Should -BeNullOrEmpty -Because "$($f.FullName) must parse cleanly"
+        }
+    }
 }
