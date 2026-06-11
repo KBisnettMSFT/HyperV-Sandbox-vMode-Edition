@@ -17,5 +17,10 @@
     Forwards to .\New-HyperVSandbox.ps1 -Delete $true.
 #>
 
-Write-Warning "New-SDNSandbox.ps1 is deprecated and will be removed in a future release. Use New-HyperVSandbox.ps1 instead. Forwarding..."
-& "$PSScriptRoot\New-HyperVSandbox.ps1" @args
+# Dot-source-safe: only forward when this shim is executed, not when it is dot-sourced (which
+# would otherwise kick off a real, multi-hour deployment). $MyInvocation.InvocationName is '.'
+# only under dot-sourcing; direct execution leaves it as the script name.
+if ($MyInvocation.InvocationName -ne '.') {
+    Write-Warning "New-SDNSandbox.ps1 is deprecated and will be removed in a future release. Use New-HyperVSandbox.ps1 instead. Forwarding..."
+    & "$PSScriptRoot\New-HyperVSandbox.ps1" @args
+}
