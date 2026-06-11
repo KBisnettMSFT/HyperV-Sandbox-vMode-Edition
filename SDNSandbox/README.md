@@ -119,7 +119,7 @@ If you wish the environment to have internet access in the Sandbox, create a VMs
 
 ``New-SDNVHDfromISO.ps1`` builds the two parent images and slipstreams the newest Windows updates into them. Because every host and SDN virtual machine in the lab is a Hyper-V differencing child (or a direct copy) of GUI.vhdx / CORE.vhdx, patching these two images is all that is required for **every** VM in the sandbox to be up to date.
 
-> For a full step-by-step runbook (prerequisites, offline builds, verification, and troubleshooting) see [New-SDNVHDfromISO-Instructions.md](./New-SDNVHDfromISO-Instructions.md). The script runs a pre-flight check and stops with a clear message if a prerequisite (elevation, Hyper-V/DISM cmdlets, or free disk space) is missing.
+> For a full step-by-step runbook (prerequisites, offline builds, verification, and troubleshooting) see [New-SDNVHDfromISO-Instructions.md](./New-SDNVHDfromISO-Instructions.md). The script runs a pre-flight check and stops with a clear message if a prerequisite (elevation, Hyper-V/DISM cmdlets, or free disk space) is missing. To target a **Windows Server vNext / Insider** build instead of 2025, see *"Testing Windows Server vNext / Insider preview builds"* in that runbook.
 
 Run from an elevated Windows PowerShell console on the Hyper-V host:
 

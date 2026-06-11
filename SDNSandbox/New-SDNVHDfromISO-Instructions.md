@@ -158,6 +158,42 @@ The script follows Microsoft's documented offline-servicing sequence
 
 ---
 
+## 3b. Testing Windows Server vNext / Insider preview builds
+
+The lab targets Windows Server 2025 by default, but it is **OS-version agnostic above the image**:
+build the `GUI.vhdx` / `CORE.vhdx` parents from a newer build and the whole lab (Active Directory,
+Failover Clustering, SMB/Storage, Windows Admin Center, SDN) comes up on it — a clean way to try
+**Windows Server vNext / Insider Preview** features before GA.
+
+**Bring your own Insider ISO.** We deliberately do **not** hard-wire preview download URLs (they
+rotate and sit behind the Windows Server Insider program):
+
+1. Get a **Windows Server vNext / Insider Preview** ISO from the [Windows Server Insider Preview
+   program](https://www.microsoft.com/software-download/windowsinsiderpreviewserver) (or your
+   Visual Studio / Azure subscription).
+2. Build the parents from it, skipping the cumulative-update download — a preview build already
+   ships current and the Update Catalog usually has no matching CU:
+
+   ```powershell
+   .\New-SDNVHDfromISO.ps1 -IsoPath 'D:\WindowsServer-vNext.iso' -DownloadUpdates:$false
+   ```
+
+3. If the build stops with *"Could not find a 'Datacenter' … image in the ISO"*, the preview media
+   uses a different edition name. List what the ISO contains and pass it via `-Edition`:
+
+   ```powershell
+   # mount the ISO first, then list the images:
+   Get-WindowsImage -ImagePath '<mountedDrive>:\sources\install.wim' | Select-Object ImageName, ImageIndex
+   .\New-SDNVHDfromISO.ps1 -IsoPath 'D:\WindowsServer-vNext.iso' -Edition 'Datacenter' -DownloadUpdates:$false
+   ```
+
+> **Support caveat:** preview builds are **best-effort** here. Microsoft does not support Insider
+> builds for production, behaviour/APIs can change between flights, and a given build may not yet
+> implement everything the deploy expects. Use a clean, throwaway run and expect to iterate. The
+> default **Windows Server 2025** path remains the tested baseline.
+
+---
+
 ## 4. Fully offline build
 
 On a host with no internet:
