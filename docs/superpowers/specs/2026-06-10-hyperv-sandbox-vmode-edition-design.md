@@ -212,7 +212,7 @@ Goal: publish to GitHub and accept community PRs for Hyper-V enthusiasts. The re
 | `.gitignore` | Exclude build/runtime artifacts: `*.har`, `*.vhdx`, `SDNVHDBuild/`, `SDNVHDs/`, scratch. (Also clears the stray 58 MB `admincenter1.har` from `git status`.) |
 | `CHANGELOG.md` *(optional)* | Track releases once community contributions begin. |
 
-License attribution stays intact (MIT © 2018 Bill Curtis); contributors are recognized via Git history / an optional `CONTRIBUTORS` note rather than altering the copyright line.
+License is MIT, © 2026 Windows Server PM Team; contributors are recognized via Git history / an optional `CONTRIBUTORS` note.
 
 ---
 
