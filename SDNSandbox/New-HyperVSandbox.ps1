@@ -345,6 +345,108 @@ function Resolve-HostVMPath {
     return $ConfiguredPath
 }
 
+function Get-PathVolumeFileSystem {
+    # Returns the filesystem type ('NTFS','ReFS', ...) of the volume hosting a local rooted path,
+    # or $null for UNC/relative/unknown paths. Best-effort: never throws.
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+    if ($Path -notmatch '^[A-Za-z]:') { return $null }   # UNC/relative: unknown
+    try {
+        $drive = (Split-Path $Path -Qualifier).TrimEnd(':')
+        return [string](Get-Volume -DriveLetter $drive -ErrorAction Stop).FileSystemType
+    }
+    catch { return $null }
+}
+
+function Test-ReFSBlockCloneEligible {
+    # True when the source image and the destination folder live on the SAME ReFS volume, so the
+    # parent-VHDX copy will use ReFS block cloning (near-instant, ~zero extra space). Block cloning
+    # is intra-volume only, hence the same-drive requirement. Best-effort; never throws.
+    param([string]$SourcePath, [string]$DestinationPath)
+    if ([string]::IsNullOrWhiteSpace($SourcePath) -or [string]::IsNullOrWhiteSpace($DestinationPath)) { return $false }
+    if ($SourcePath -notmatch '^[A-Za-z]:' -or $DestinationPath -notmatch '^[A-Za-z]:') { return $false }
+    if ((Split-Path $SourcePath -Qualifier) -ne (Split-Path $DestinationPath -Qualifier)) { return $false }
+    return ((Get-PathVolumeFileSystem -Path $SourcePath) -eq 'ReFS')
+}
+
+function Add-SandboxDefenderExclusion {
+    # Best-effort: add Microsoft Defender folder exclusions for the deploy paths so real-time
+    # scanning does not inspect every multi-GB VHDX write (copy, differencing children, first boot).
+    # Never throws - if Defender/Add-MpPreference is unavailable or blocked by policy it logs and
+    # continues. Returns the paths it successfully excluded so the caller can remove them later.
+    param([string[]]$Path)
+    $applied = @()
+    foreach ($p in ($Path | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+        try {
+            Add-MpPreference -ExclusionPath $p -ErrorAction Stop
+            Write-Host "  Added temporary Defender exclusion to speed VHDX I/O: $p" -ForegroundColor DarkGray
+            $applied += $p
+        }
+        catch {
+            Write-Verbose "Could not add Defender exclusion for '$p': $($_.Exception.Message). Continuing."
+        }
+    }
+    return $applied
+}
+
+function Remove-SandboxDefenderExclusion {
+    # Best-effort removal of exclusions added by Add-SandboxDefenderExclusion. Never throws.
+    param([string[]]$Path)
+    foreach ($p in ($Path | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+        try {
+            Remove-MpPreference -ExclusionPath $p -ErrorAction Stop
+            Write-Host "  Removed temporary Defender exclusion: $p" -ForegroundColor DarkGray
+        }
+        catch {
+            Write-Verbose "Could not remove Defender exclusion for '$p': $($_.Exception.Message)."
+        }
+    }
+}
+
+function Get-VHDXCopyPlan {
+    # Pure: returns the ordered Source->Destination pairs that stage the GUI/CORE parent images into
+    # a host's VM path. Lets tests assert the plan and lets both the sequential and parallel copy
+    # paths share one definition.
+    param([string]$guiVHDXPath, [string]$coreVHDXPath, [string]$DestinationFolder)
+    $root = $DestinationFolder.TrimEnd('\')
+    return @(
+        [pscustomobject]@{ Source = $guiVHDXPath;  Destination = "$root\GUI.vhdx" }
+        [pscustomobject]@{ Source = $coreVHDXPath; Destination = "$root\CORE.vhdx" }
+    )
+}
+
+function Invoke-ParallelFileCopy {
+    # Copies multiple Source->Destination pairs CONCURRENTLY using background jobs that run robocopy
+    # directly (self-contained - no dependency on this script's functions). Mirrors Copy-LargeFile's
+    # robocopy flags and Copy-Item fallback. Waits for all copies before returning.
+    param([pscustomobject[]]$Pairs)
+    $jobs = foreach ($pair in $Pairs) {
+        Start-Job -ScriptBlock {
+            param($Source, $Destination)
+            $srcDir = Split-Path -Path $Source -Parent
+            $srcLeaf = Split-Path -Path $Source -Leaf
+            $dstDir = Split-Path -Path $Destination -Parent
+            $dstLeaf = Split-Path -Path $Destination -Leaf
+            if ($dstDir -and -not (Test-Path -LiteralPath $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
+            $robocopy = Join-Path $env:SystemRoot 'System32\robocopy.exe'
+            if (Test-Path $robocopy) {
+                & $robocopy $srcDir $dstDir $srcLeaf /J /NP /NFL /NDL /NJH /NJS /R:2 /W:5 | Out-Null
+                if ($LASTEXITCODE -lt 8) {
+                    if ($dstLeaf -and ($srcLeaf -ne $dstLeaf)) {
+                        $landed = Join-Path $dstDir $srcLeaf
+                        if (Test-Path -LiteralPath $landed) { Move-Item -LiteralPath $landed -Destination $Destination -Force }
+                    }
+                    return
+                }
+            }
+            Copy-Item -LiteralPath $Source -Destination $Destination -Force
+        } -ArgumentList $pair.Source, $pair.Destination
+    }
+    $jobs | Wait-Job | Out-Null
+    $jobs | Receive-Job -ErrorAction SilentlyContinue | Out-Null
+    $jobs | Remove-Job -Force -ErrorAction SilentlyContinue
+}
+
 function Disable-OfflinePrivacyExperience {
     <#
         Suppresses the Windows OOBE "privacy / send diagnostic data to Microsoft" experience in an
@@ -498,19 +600,30 @@ function Copy-VHDXtoHosts {
         $MultipleHyperVHosts, 
         $guiVHDXPath, 
         $coreVHDXPath, 
-        $HostVMPath
+        $HostVMPath,
+        [bool]$EnableParallelCopy = $false
 
     )
-        
+
+    $allPairs = @()
     foreach ($HypervHost in $MultipleHyperVHosts) { 
 
         $DriveLetter = $HostVMPath.Split(':')
         $path = (("\\$HypervHost\") + ($DriveLetter[0] + "$") + ($DriveLetter[1]))
-        Write-Verbose "Copying $guiVHDXPath to $path"
-        Copy-LargeFile -Source $guiVHDXPath -Destination "$path\GUI.vhdx"
-        Write-Verbose "Copying $coreVHDXPath to $path"
-        Copy-LargeFile -Source $coreVHDXPath -Destination "$path\Core.vhdx"
+        $allPairs += [pscustomobject]@{ Source = $guiVHDXPath;  Destination = "$path\GUI.vhdx" }
+        $allPairs += [pscustomobject]@{ Source = $coreVHDXPath; Destination = "$path\Core.vhdx" }
 
+    }
+
+    if ($EnableParallelCopy) {
+        Write-Verbose "Copying parent images to $(@($MultipleHyperVHosts).Count) host(s) concurrently"
+        Invoke-ParallelFileCopy -Pairs $allPairs
+    }
+    else {
+        foreach ($p in $allPairs) {
+            Write-Verbose "Copying $($p.Source) to $($p.Destination)"
+            Copy-LargeFile -Source $p.Source -Destination $p.Destination
+        }
     }
 }
     
@@ -520,17 +633,27 @@ function Copy-VHDXtoHost {
 
         $guiVHDXPath, 
         $HostVMPath, 
-        $coreVHDXPath
+        $coreVHDXPath,
+        [bool]$EnableParallelCopy = $false
 
     )
 
-    Write-Verbose "Copying $guiVHDXPath to $HostVMPath\GUI.VHDX"
-    Copy-LargeFile -Source $guiVHDXPath -Destination "$HostVMPath\GUI.VHDX"
-    Write-Verbose "Copying $coreVHDXPath to $HostVMPath\CORE.VHDX"
-    Copy-LargeFile -Source $coreVHDXPath -Destination "$HostVMPath\CORE.VHDX"
+    $plan = Get-VHDXCopyPlan -guiVHDXPath $guiVHDXPath -coreVHDXPath $coreVHDXPath -DestinationFolder $HostVMPath
 
-      
-    
+    if (Test-ReFSBlockCloneEligible -SourcePath $guiVHDXPath -DestinationPath $HostVMPath) {
+        Write-Host "  ReFS detected on the $(Split-Path $HostVMPath -Qualifier) volume - parent VHDX copy will block-clone (near-instant, ~zero extra space)." -ForegroundColor DarkGray
+    }
+
+    if ($EnableParallelCopy) {
+        Write-Verbose "Copying GUI and CORE parent images concurrently to $HostVMPath"
+        Invoke-ParallelFileCopy -Pairs $plan
+    }
+    else {
+        foreach ($p in $plan) {
+            Write-Verbose "Copying $($p.Source) to $($p.Destination)"
+            Copy-LargeFile -Source $p.Source -Destination $p.Destination
+        }
+    }
 }
     
 function Get-guiVHDXPath {
@@ -729,11 +852,19 @@ function Add-Files {
         $DriveLetter = $HostVMPath.Split(':')
         $path = (("\\$HypervHost\") + ($DriveLetter[0] + "$") + ($DriveLetter[1]) + "\" + $sdnHOST.SDNHOST + ".vhdx")       
 
-        # Install Hyper-V Offline
+        # Install Hyper-V Offline - this is the expensive per-host servicing pass. It is skipped when
+        # the base images were already built with the role pre-staged (set HyperVRolePreStaged in the
+        # config after building images with New-SDNVHDfromISO.ps1 -PreStageHyperV). The mount + answer
+        # file / config injection below still runs either way.
 
-        Write-Verbose "Performing offline installation of Hyper-V to path $path"
-        Install-WindowsFeature -Vhd $path -Name Hyper-V, RSAT-Hyper-V-Tools, Hyper-V-Powershell -Confirm:$false | Out-Null
-        Start-Sleep -Seconds 20       
+        if ($SDNConfig.HyperVRolePreStaged) {
+            Write-Verbose "HyperVRolePreStaged is set - skipping redundant offline Hyper-V install for $path"
+        }
+        else {
+            Write-Verbose "Performing offline installation of Hyper-V to path $path"
+            Install-WindowsFeature -Vhd $path -Name Hyper-V, RSAT-Hyper-V-Tools, Hyper-V-Powershell -Confirm:$false | Out-Null
+            Start-Sleep -Seconds 20       
+        }
 
     
         # Mount VHDX
@@ -4319,6 +4450,18 @@ $NestedVMMemoryinGB = $SDNConfig.NestedVMMemoryinGB
 $guiVHDXPath = Resolve-ParentVHDXPath -ConfiguredPath $SDNConfig.guiVHDXPath -Label 'GUI'
 $coreVHDXPath = Resolve-ParentVHDXPath -ConfiguredPath $SDNConfig.coreVHDXPath -Label 'CORE'
 $HostVMPath = Resolve-HostVMPath -ConfiguredPath $SDNConfig.HostVMPath
+
+# Speed optimization (#1): while deploying, exclude the multi-GB VHDX working paths from Microsoft
+# Defender real-time scanning - otherwise every parent copy, differencing child and first boot is
+# scanned. Best-effort and non-fatal; the exclusions are removed at the end of the run. Disable by
+# setting OptimizeDefenderDuringDeploy = $false in the config.
+$script:DefenderExclusionsApplied = @()
+if ($SDNConfig.OptimizeDefenderDuringDeploy) {
+    $defenderPaths = @($HostVMPath, (Split-Path $guiVHDXPath -Parent), (Split-Path $coreVHDXPath -Parent)) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+    $script:DefenderExclusionsApplied = Add-SandboxDefenderExclusion -Path $defenderPaths
+}
+
 $InternalSwitch = $SDNConfig.InternalSwitch
 $natDNS = $SDNConfig.natDNS
 $natSubnet = $SDNConfig.natSubnet
@@ -4499,6 +4642,7 @@ if ($SDNConfig.MultipleHyperVHosts) {
         coreVHDXPath        = $coreVHDXPath
         HostVMPath          = $HostVMPath
         guiVHDXPath         = $guiVHDXPath 
+        EnableParallelCopy  = [bool]$SDNConfig.EnableParallelCopy
 
     }
 
@@ -4517,6 +4661,7 @@ if (!$SDNConfig.MultipleHyperVHosts) {
         coreVHDXPath = $coreVHDXPath
         HostVMPath   = $HostVMPath
         guiVHDXPath  = $guiVHDXPath 
+        EnableParallelCopy = [bool]$SDNConfig.EnableParallelCopy
     }
 
     Copy-VHDXtoHost @params
@@ -4787,6 +4932,11 @@ $timeSpan = New-TimeSpan -Start $starttime -End $endtime
 Write-Verbose "`nSuccessfully deployed the Hyper-V Sandbox - vMode Edition"
 
 Write-Host "Deployment time was $($timeSpan.Hours) hour and $($timeSpan.Minutes) minutes." -ForegroundColor Green
+
+# Remove the temporary Defender exclusions added at the start of the deployment (#1).
+if ($script:DefenderExclusionsApplied -and @($script:DefenderExclusionsApplied).Count -gt 0) {
+    Remove-SandboxDefenderExclusion -Path $script:DefenderExclusionsApplied
+}
  
 $ErrorActionPreference = "Continue"
 $VerbosePreference = "SilentlyContinue"

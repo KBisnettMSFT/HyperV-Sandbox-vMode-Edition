@@ -13,6 +13,8 @@ SDN remains a first-class scenario: the lab supports full Microsoft SDN provisio
 
 ![A fully deployed Hyper-V Sandbox lab](SDNSandbox/res/HyperVSandbox.png "Graphic of a fully deployed Hyper-V Sandbox")
 
+> **⚡ Speed tip:** For the fastest deploy, put the base images **and** the VM path (`HostVMPath`) on a single **data disk formatted with ReFS**. The multi‑GB parent‑VHDX copy then uses ReFS **block cloning** (near‑instant, ~zero extra space) — the largest single I/O cost in a deploy. The wizard detects this automatically. See [Performance & storage tips](SDNSandbox/README.md#performance--storage-tips-faster-deploys-without-more-hardware) for this plus the opt‑in Defender, Hyper‑V pre‑stage, and parallel‑copy switches.
+
 ## A note on names
 
 The product is **Hyper-V Sandbox — vMode Edition**, but some internal identifiers keep their historical `SDN` prefix for stability — the VM names (`SDNMGMT`, `SDNHOST1/2`), the `SDN*` configuration keys, and the `SDNSandbox-Config.psd1` filename. The `SDNEXAMPLES` and `SDNExpress` content keeps "SDN" because that is the correct technical term. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.

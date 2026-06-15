@@ -107,3 +107,77 @@ Describe 'Resolve-HostVMPath' {
         Resolve-HostVMPath -ConfiguredPath '\\srv\share\VMs' | Should -Be '\\srv\share\VMs'
     }
 }
+
+Describe 'Get-PathVolumeFileSystem' {
+    It 'returns the volume filesystem type for a rooted local path' {
+        Mock Get-Volume { [pscustomobject]@{ FileSystemType = 'ReFS' } } -ParameterFilter { $DriveLetter -eq 'V' }
+        Get-PathVolumeFileSystem -Path 'V:\VMs\GUI.vhdx' | Should -Be 'ReFS'
+    }
+    It 'returns nothing for a UNC path' {
+        Get-PathVolumeFileSystem -Path '\\srv\share\x.vhdx' | Should -BeNullOrEmpty
+    }
+    It 'returns nothing (never throws) when the volume cannot be read' {
+        Mock Get-Volume { throw 'no volume' }
+        Get-PathVolumeFileSystem -Path 'Z:\x' | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Test-ReFSBlockCloneEligible' {
+    It 'true when source and destination share one ReFS volume' {
+        Mock Get-PathVolumeFileSystem { 'ReFS' }
+        Test-ReFSBlockCloneEligible -SourcePath 'D:\img\GUI.vhdx' -DestinationPath 'D:\VMs' | Should -BeTrue
+    }
+    It 'false when the shared volume is NTFS' {
+        Mock Get-PathVolumeFileSystem { 'NTFS' }
+        Test-ReFSBlockCloneEligible -SourcePath 'D:\img\GUI.vhdx' -DestinationPath 'D:\VMs' | Should -BeFalse
+    }
+    It 'false when source and destination are on different drives (block clone is intra-volume)' {
+        Mock Get-PathVolumeFileSystem { 'ReFS' }
+        Test-ReFSBlockCloneEligible -SourcePath 'D:\img\GUI.vhdx' -DestinationPath 'E:\VMs' | Should -BeFalse
+    }
+    It 'false for a UNC destination' {
+        Test-ReFSBlockCloneEligible -SourcePath 'D:\img\GUI.vhdx' -DestinationPath '\\srv\share\VMs' | Should -BeFalse
+    }
+}
+
+Describe 'Get-VHDXCopyPlan' {
+    It 'returns GUI and CORE destinations under the host VM path' {
+        $plan = Get-VHDXCopyPlan -guiVHDXPath 'D:\img\gui.vhdx' -coreVHDXPath 'D:\img\core.vhdx' -DestinationFolder 'V:\VMs'
+        @($plan).Count        | Should -Be 2
+        $plan[0].Source       | Should -Be 'D:\img\gui.vhdx'
+        $plan[0].Destination  | Should -Be 'V:\VMs\GUI.vhdx'
+        $plan[1].Source       | Should -Be 'D:\img\core.vhdx'
+        $plan[1].Destination  | Should -Be 'V:\VMs\CORE.vhdx'
+    }
+    It 'tolerates a trailing backslash on the destination folder' {
+        $plan = Get-VHDXCopyPlan -guiVHDXPath 'g' -coreVHDXPath 'c' -DestinationFolder 'V:\VMs\'
+        $plan[0].Destination | Should -Be 'V:\VMs\GUI.vhdx'
+    }
+}
+
+Describe 'Add/Remove-SandboxDefenderExclusion' {
+    BeforeAll {
+        # On a runner without Defender, define harmless stubs so the cmdlets are mockable.
+        if (-not (Get-Command Add-MpPreference -ErrorAction SilentlyContinue))    { function Add-MpPreference { param($ExclusionPath) } }
+        if (-not (Get-Command Remove-MpPreference -ErrorAction SilentlyContinue)) { function Remove-MpPreference { param($ExclusionPath) } }
+    }
+    It 'adds an exclusion for each unique path and returns the applied paths' {
+        Mock Add-MpPreference {}
+        Mock Write-Host {}
+        $r = Add-SandboxDefenderExclusion -Path 'V:\VMs', 'D:\img', 'V:\VMs'
+        @($r).Count | Should -Be 2
+        Assert-MockCalled Add-MpPreference -Times 2 -Exactly
+    }
+    It 'never throws when Defender is unavailable and applies nothing' {
+        Mock Add-MpPreference { throw 'Defender not available' }
+        Mock Write-Verbose {}
+        $r = Add-SandboxDefenderExclusion -Path 'V:\VMs'
+        @($r).Count | Should -Be 0
+    }
+    It 'removes each exclusion best-effort without throwing' {
+        Mock Remove-MpPreference {}
+        Mock Write-Host {}
+        { Remove-SandboxDefenderExclusion -Path 'V:\VMs', 'D:\img' } | Should -Not -Throw
+        Assert-MockCalled Remove-MpPreference -Times 2 -Exactly
+    }
+}

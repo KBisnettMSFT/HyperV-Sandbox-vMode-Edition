@@ -32,6 +32,15 @@
     InternalSwitch                       = "InternalSwitch"                      # Name of internal switch that the SDN Lab VMs will use in Single Host mode. This only applies when using a single host.
 
 
+    # Performance optimization (see README "Speed / storage tips")
+    # For the FASTEST deploy, place the GUI/CORE base images AND HostVMPath on one data volume
+    # formatted with ReFS: the multi-GB parent-VHDX copy then uses ReFS block cloning (near-instant,
+    # ~zero extra space). The deploy detects this automatically and logs it - no setting required.
+    OptimizeDefenderDuringDeploy         = $true                                 # Temporarily exclude the VHDX working paths from Defender real-time scanning during deploy (removed at the end). Big I/O win; set $false to leave Defender untouched.
+    HyperVRolePreStaged                  = $false                                # Set $true only if you built the base images with New-SDNVHDfromISO.ps1 -PreStageHyperV. Skips the redundant per-host offline Hyper-V install.
+    EnableParallelCopy                   = $false                                # Copy the GUI/CORE parent images (and per-host copies) concurrently instead of sequentially. Helps most on NTFS; on a single ReFS volume the copy is already near-instant.
+
+
     # ProductKeys
     GUIProductKey                        = "D764K-2NDRG-47T6Q-P8T8W-YP6DF"        # Product key for Windows Server 2025 (Desktop Experience) Datacenter Installation
 

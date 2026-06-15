@@ -93,7 +93,14 @@ param(
     # idle CPU/disk to cut wall-clock time; trades the live DISM progress bar for periodic
     # heartbeat updates. Default is the deterministic sequential build with the live bar.
     [Parameter(Mandatory = $false)]
-    [Switch] $Parallel
+    [Switch] $Parallel,
+
+    # Pre-stage the Hyper-V role into the freshly built parent image(s) using the same offline
+    # ServerManager install the deploy would otherwise run per nested host. Pair with
+    # HyperVRolePreStaged = $true in SDNSandbox-Config.psd1 to skip the redundant per-host servicing
+    # and shorten the deploy. Best-effort (requires the ServerManager module on the build host).
+    [Parameter(Mandatory = $false)]
+    [Switch] $PreStageHyperV
 )
 
 $ErrorActionPreference = "Stop"
@@ -1461,6 +1468,26 @@ $swOverall.Stop()
 Write-Host "`nFinished building parent VHDX image(s) in $(Format-Elapsed $swOverall.Elapsed)." -ForegroundColor Green
 if ($buildGUI) { Write-Host "  GUI : $guiOut" -ForegroundColor Green }
 if ($buildCORE) { Write-Host "  CORE: $coreOut" -ForegroundColor Green }
+
+# Optional (#2): pre-stage the Hyper-V role into the freshly built parent image(s) so the deploy can
+# skip the per-host offline install. Uses the SAME ServerManager feature set the deploy installs.
+# Best-effort: if Install-WindowsFeature is unavailable (e.g. building on a client SKU) or fails, the
+# image is still valid - just not pre-staged. Pair with HyperVRolePreStaged = $true in the config.
+if ($PreStageHyperV) {
+    $preStageTargets = @()
+    if ($buildGUI) { $preStageTargets += $guiOut }
+    if ($buildCORE) { $preStageTargets += $coreOut }
+    foreach ($img in $preStageTargets) {
+        try {
+            Write-Host "  Pre-staging Hyper-V role into $img (offline)..." -ForegroundColor DarkGray
+            Install-WindowsFeature -Vhd $img -Name Hyper-V, RSAT-Hyper-V-Tools, Hyper-V-PowerShell -ErrorAction Stop | Out-Null
+            Write-Host "    Done. Set HyperVRolePreStaged = `$true in SDNSandbox-Config.psd1 to skip the per-host install." -ForegroundColor DarkGray
+        }
+        catch {
+            Write-Warning "  Could not pre-stage Hyper-V into '$img': $($_.Exception.Message). The image is still valid; the deploy will install Hyper-V per host as usual."
+        }
+    }
+}
 
 $ErrorActionPreference = "Continue"
 $VerbosePreference = "SilentlyContinue"

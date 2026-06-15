@@ -44,4 +44,13 @@ Describe 'SDNSandbox-Config.psd1 schema' {
     It 'the domain NetBIOS label is 14 characters or fewer' {
         ($script:cfg.SDNDomainFQDN -split '\.')[0].Length | Should -BeLessOrEqual 14
     }
+
+    It 'exposes the performance-optimization flags with safe defaults' {
+        $script:cfg.Keys | Should -Contain 'OptimizeDefenderDuringDeploy'
+        $script:cfg.Keys | Should -Contain 'HyperVRolePreStaged'
+        $script:cfg.Keys | Should -Contain 'EnableParallelCopy'
+        # Opt-in performance features default OFF so default deploy behavior is unchanged.
+        $script:cfg.HyperVRolePreStaged | Should -BeFalse
+        $script:cfg.EnableParallelCopy  | Should -BeFalse
+    }
 }

@@ -100,6 +100,20 @@ Please note the following regarding the hardware setup requirements:
 
 >**Note:** If the default Large MTU (Jumbo Frames) value of 9014 is not supported in the switch or NICs in the environment, you may need to set the SDNLABMTU value to 1514 in the SDN-Configuration file.
 
+## Performance & storage tips (faster deploys without more hardware)
+
+The single biggest, no-cost speedup is **storage choice**:
+
+* **Put the base images _and_ `HostVMPath` on one data volume formatted with ReFS.** The deploy stages the ~20–40 GB `GUI.vhdx`/`CORE.vhdx` parents into `HostVMPath`; on a single **ReFS** volume that copy becomes a near-instant **block clone** (copy-on-write, ~zero extra space) instead of a multi-GB physical copy. This is the largest single I/O cost in a deploy. The wizard detects this automatically and logs *"parent VHDX copy will block-clone"* — no setting required. Block cloning is **intra-volume only**, so the source images and `HostVMPath` must share the same ReFS volume. ReFS cannot be the boot volume — use a data drive. (NTFS still works; you just don't get the free copy.)
+
+The deploy also exposes three opt-in switches in `SDNSandbox-Config.psd1`:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `OptimizeDefenderDuringDeploy` | `$true` | Temporarily excludes the VHDX working paths from Microsoft Defender real-time scanning during the deploy (removed automatically at the end). Scanning every multi-GB VHDX write is a large hidden cost; best-effort and non-fatal. Set `$false` to leave Defender untouched. |
+| `HyperVRolePreStaged` | `$false` | Skips the redundant per-host offline Hyper-V install. Only set `$true` after building your base images with `New-SDNVHDfromISO.ps1 -PreStageHyperV` (which bakes the Hyper-V role into the parents once, instead of installing it into every nested host at deploy time). |
+| `EnableParallelCopy` | `$false` | Copies the `GUI`/`CORE` parents (and the per-host copies in multi-host mode) concurrently instead of sequentially. Helps most on **NTFS**; on a single **ReFS** volume the copy is already near-instant so this adds little. |
+
 ### NAT Prerequisites
 
 If you wish the environment to have internet access in the Sandbox, create a VMswitch on the FIRST host that maps to a NIC on a network that has internet access the network should use DHCP. The configuration file will need to be updated to include the name of the VMswitch to use for NAT.
@@ -141,6 +155,7 @@ Useful parameters:
 | ``-VHDSize`` | ``100GB`` | Virtual size of each (dynamic) parent VHDX. |
 | ``-WorkPath`` | ``<launchDrive>\SDNVHDBuild`` | Cache folder for the downloaded ISO, updates and DISM scratch (reused across runs). Defaults to the drive the script was launched from, not C:. |
 | ``-Parallel`` | *(off)* | Build ``GUI.vhdx`` and ``CORE.vhdx`` concurrently (only when both are selected) to use idle CPU/disk and cut wall-clock time. Trades the per-image live progress bar for periodic heartbeat updates. |
+| ``-PreStageHyperV`` | *(off)* | Bake the Hyper-V role into the freshly built parent image(s) so the deploy can skip the per-host offline install. Pair with ``HyperVRolePreStaged = $true`` in ``SDNSandbox-Config.psd1``. Best-effort (needs the ServerManager module on the build host). |
 
 >**Note:** Build artifacts stay on the **drive the script was launched from** by default (not C:). The ISO/updates/scratch go to ``<launchDrive>\SDNVHDBuild`` and the parent images to ``<launchDrive>\SDNVHDs\``. The output paths come from ``guiVHDXPath`` / ``coreVHDXPath`` in ``SDNSandbox-Config.psd1``; if those point at another drive the script re-bases them onto the launch drive and **updates the config in place** (comments preserved) so ``New-HyperVSandbox.ps1`` finds the images in the same place.
 
@@ -151,5 +166,7 @@ Useful parameters:
 The following are a list of settings that are configurable and have been fully tested. You may be able to change some of the other settings and have them work, but they have not been fully tested.
 
 >**Note:** Changing the IP Addresses for Management Network (*default of 192.168.1.0/24*) has been succesfully tested.
+
+>**Performance flags:** `OptimizeDefenderDuringDeploy` (default `$true`), `HyperVRolePreStaged` (default `$false`), and `EnableParallelCopy` (default `$false`) tune deploy speed — see [Performance & storage tips](#performance--storage-tips-faster-deploys-without-more-hardware) above. The opt-in flags default OFF so default deploy behavior is unchanged.
 
 
