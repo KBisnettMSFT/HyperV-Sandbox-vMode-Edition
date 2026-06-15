@@ -36,6 +36,11 @@
     Builds GUI.vhdx and CORE.vhdx concurrently to cut wall-clock time on hosts with spare
     CPU/disk. Shows periodic heartbeat updates instead of the per-image live progress bar.
 
+.EXAMPLE
+    .\New-SDNVHDfromISO.ps1 -PreStageHyperV
+    Bakes the Hyper-V role into the built parent image(s) so the deploy can skip the per-host
+    offline install. Pair with HyperVRolePreStaged = $true in SDNSandbox-Config.psd1.
+
 .NOTES
     * Run from an elevated Windows PowerShell console on the Hyper-V host.
     * The parent images are produced from a generalized WIM and must remain generalized and

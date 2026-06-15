@@ -60,6 +60,11 @@ This will:
 > `C:\SDNVHDs\`), the script **re-bases them onto the launch drive and updates the config
 > in place** (comments preserved) so the deployment — `New-HyperVSandbox.ps1`, which reads the
 > same config — finds the images in the same place. Override the work folder with `-WorkPath`.
+>
+> **Speed tip:** launch the build from (and keep the images on) the **same ReFS data volume** you
+> will use for `HostVMPath`. The deploy's parent-VHDX copy then block-clones (near-instant, ~zero
+> extra space) instead of physically copying tens of GB. See *Performance & storage tips* in
+> [`README.md`](./README.md#performance--storage-tips-faster-deploys-without-more-hardware).
 
 `-Verbose` is recommended so you can watch progress; expect the whole run to take
 **30–90+ minutes**, mostly during the download and the update commit.
@@ -95,6 +100,10 @@ Each build step and the overall run report their elapsed time on completion.
 # Inject extra/specific local updates in addition to (or instead of) the catalog CU:
 .\New-SDNVHDfromISO.ps1 -UpdatesPath 'C:\MSU'                 # catalog CU + your *.msu
 .\New-SDNVHDfromISO.ps1 -UpdatesPath 'C:\MSU' -DownloadUpdates:$false   # only your *.msu
+
+# Pre-stage the Hyper-V role into the parents so the deploy can skip the per-host install
+# (then set HyperVRolePreStaged = $true in SDNSandbox-Config.psd1):
+.\New-SDNVHDfromISO.ps1 -PreStageHyperV
 ```
 
 ### Key parameters
@@ -111,6 +120,7 @@ Each build step and the overall run report their elapsed time on completion.
 | `-VHDSize` | `100GB` | Virtual size of each (dynamic) parent VHDX |
 | `-WorkPath` | `<launchDrive>\SDNVHDBuild` | Cache folder for the ISO, updates and DISM scratch (on the launch drive, not C:) |
 | `-Parallel` | *(off)* | Build GUI and CORE at the same time (both selected) - faster on idle hosts; shows heartbeats instead of the live bar |
+| `-PreStageHyperV` | *(off)* | Bake the Hyper-V role into the built parents so the deploy can skip the per-host install. Pair with `HyperVRolePreStaged = $true` in `SDNSandbox-Config.psd1`. Best-effort (needs the ServerManager module on the build host). |
 
 ### Building both images in parallel (`-Parallel`)
 
@@ -131,6 +141,23 @@ single-threaded decompression and CBS, not disk I/O), pass `-Parallel` to build
   the pre-flight check budgets for this automatically.
 - If you interrupt the run, the script stops the in-progress build jobs before dismounting
   the ISO, and each job cleans up its own partial VHDX.
+
+### Pre-staging Hyper-V into the parents (`-PreStageHyperV`)
+
+At deploy time, `New-HyperVSandbox.ps1` installs the Hyper-V role **offline into every nested
+host VHDX, one at a time** — a slow, repeated servicing pass. `-PreStageHyperV` does that work
+**once per parent image** instead, using the same offline ServerManager feature set
+(`Hyper-V`, `RSAT-Hyper-V-Tools`, `Hyper-V-PowerShell`):
+
+- Stages **both** `GUI.vhdx` and `CORE.vhdx` (SDNMGMT derives from GUI; SDNHOST1/2 from CORE), so
+  every first-tier host is covered.
+- After building with `-PreStageHyperV`, set **`HyperVRolePreStaged = $true`** in
+  `SDNSandbox-Config.psd1`. The deploy then logs `HyperVRolePreStaged is set - skipping …` for each
+  host instead of `Performing offline installation of Hyper-V`.
+- **Best-effort:** it uses `Install-WindowsFeature -Vhd`, which needs the **ServerManager** module
+  on the build host (Windows Server, or a client with RSAT). If it is unavailable or fails, the
+  build warns and leaves a valid, **un-staged** image — just leave `HyperVRolePreStaged = $false`.
+- Adds a little time to the (run-once) build in exchange for a shorter (run-often) deploy.
 
 ---
 
@@ -225,6 +252,18 @@ On a host with no internet:
 $mp = (Mount-VHD -Path 'C:\SDNVHDs\GUI.vhdx' -Passthru | Get-Disk |
        Get-Partition | Get-Volume | Where-Object DriveLetter).DriveLetter
 Get-WindowsPackage -Path "$mp`:\" | Where-Object PackageName -match 'KB'
+Dismount-VHD -Path 'C:\SDNVHDs\GUI.vhdx'
+```
+
+* If you built with `-PreStageHyperV`, confirm the Hyper-V role is actually present before setting
+  `HyperVRolePreStaged = $true` in the config:
+
+```powershell
+$mp = (Mount-VHD -Path 'C:\SDNVHDs\GUI.vhdx' -Passthru | Get-Disk |
+       Get-Partition | Get-Volume | Where-Object DriveLetter).DriveLetter
+Get-WindowsOptionalFeature -Path "$mp`:\" |
+    Where-Object { $_.FeatureName -like 'Microsoft-Hyper-V*' -and $_.State -eq 'Enabled' } |
+    Select-Object FeatureName, State
 Dismount-VHD -Path 'C:\SDNVHDs\GUI.vhdx'
 ```
 

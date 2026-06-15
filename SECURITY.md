@@ -6,6 +6,7 @@ The Hyper-V Sandbox is intentionally insecure for ease of learning:
 
 - The configuration file (`SDNSandbox/SDNSandbox-Config.psd1`) stores **product keys and a default password (`Password01`) in plaintext**, and that file is copied onto lab VMs during deployment.
 - The lab is **not** hardened, highly available, or fault tolerant.
+- During deployment the script **temporarily adds Microsoft Defender folder exclusions** for the VHDX working paths (`HostVMPath` and the parent-image folders) to speed multi-GB disk I/O, then **removes them when the deploy finishes**. This is best-effort and non-fatal. Set `OptimizeDefenderDuringDeploy = $false` in `SDNSandbox-Config.psd1` to leave Defender untouched.
 
 **Never deploy it on production networks or with real credentials/keys.**
 
