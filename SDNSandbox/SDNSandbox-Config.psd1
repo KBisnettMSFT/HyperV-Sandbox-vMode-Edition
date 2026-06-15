@@ -14,8 +14,10 @@
     PostgreSQLPort = 5432
 
     # VHDX Paths
-    # If the path below does not exist when New-SDNSandbox.ps1 runs, it auto-locates the image in
-    # the same folder on the drive the wizard is launched from. Set an explicit path here to override.
+    # If the path below does not exist when New-SDNSandbox.ps1 runs, it auto-locates the image by
+    # filename on the drive the wizard is launched from, then beside the wizard script itself (and in
+    # a SDNVHDs subfolder next to it). Set an explicit path here to override - the configured path
+    # always wins when the image is actually there.
     guiVHDXPath                          = "C:\SDNVHDs\gui.vhdx"               # This value controls the location of the GUI VHDX.              
     coreVHDXPath                         = "C:\SDNVHDs\core.vhdx"              # This value controls the location of the CORE VHDX. 
     

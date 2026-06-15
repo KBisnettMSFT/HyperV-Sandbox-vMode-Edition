@@ -259,14 +259,26 @@ function ConvertTo-ScriptDriveRootedPath {
     return ($DriveRoot + (Split-Path $Path -NoQualifier))
 }
 
+function Get-ScriptRootFolder {
+    # The folder this script lives in (e.g. 'E:\HyperVSandbox'). Used as a fallback location to
+    # auto-locate the parent VHDXs when a customer keeps the images alongside the wizard rather
+    # than in the folder named by the config. Falls back to the current location, then SystemDrive.
+    $folder = $null
+    if ($PSScriptRoot) { $folder = $PSScriptRoot }
+    if ([string]::IsNullOrWhiteSpace($folder)) { try { $folder = (Get-Location).Path } catch {} }
+    if ([string]::IsNullOrWhiteSpace($folder)) { $folder = "$env:SystemDrive\" }
+    return $folder
+}
+
 function Resolve-ParentVHDXPath {
     <#
         Returns the location of a parent VHDX (GUI/CORE), honoring the config value as an explicit
-        override when the image is actually there, and otherwise auto-locating it on the drive this
-        wizard was launched from. This lets a customer build the images on a non-C: drive (where
-        New-SDNVHDfromISO.ps1 writes them and records the drive in the config) and then run the
-        wizard without hand-editing a hard-coded drive letter - even if the folder was later moved
-        to another drive. The configured path always wins when it exists.
+        override when the image is actually there, and otherwise auto-locating it near the wizard.
+        This lets a customer build the images on a non-C: drive (where New-SDNVHDfromISO.ps1 writes
+        them and records the drive in the config) and then run the wizard without hand-editing a
+        hard-coded drive letter - even if the folder was later moved to another drive, or the images
+        simply sit next to the script. The configured path always wins when it exists; the fallbacks
+        only run when the deployment would otherwise fail to find the image.
     #>
     param([string]$ConfiguredPath, [string]$Label)
 
@@ -275,12 +287,31 @@ function Resolve-ParentVHDXPath {
     # 1. Honor the configured path if the image is actually there (explicit override wins).
     if (Test-Path -LiteralPath $ConfiguredPath) { return $ConfiguredPath }
 
-    # 2. Otherwise look for the same folder\file on the drive this script lives on.
+    # 2. Build ordered fallback candidates (only reached when the configured path is missing):
+    $leaf = Split-Path $ConfiguredPath -Leaf
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    #    a. Same folder\file on the drive this script lives on - handles a stale drive letter while
+    #       preserving the configured folder (e.g. C:\SDNVHDs\gui.vhdx -> E:\SDNVHDs\gui.vhdx).
     $driveRoot = Get-ScriptDriveRoot
     $rebased = ConvertTo-ScriptDriveRootedPath -Path $ConfiguredPath -DriveRoot $driveRoot
-    if ($rebased -ne $ConfiguredPath -and (Test-Path -LiteralPath $rebased)) {
-        Write-Host "  $Label parent image not found at '$ConfiguredPath'; using '$rebased' (auto-located on the $driveRoot drive)." -ForegroundColor Yellow
-        return $rebased
+    if ($rebased -ne $ConfiguredPath) { $candidates.Add($rebased) }
+
+    #    b. Alongside the wizard script itself, and in a SDNVHDs subfolder beside it, so a flat
+    #       "everything in one folder" layout works without editing the config. Pure string joins
+    #       (no Join-Path) so a configured drive that is absent here never triggers a provider error.
+    $scriptRoot = (Get-ScriptRootFolder)
+    if (-not [string]::IsNullOrWhiteSpace($scriptRoot) -and -not [string]::IsNullOrWhiteSpace($leaf)) {
+        $scriptRoot = $scriptRoot.TrimEnd('\')
+        $candidates.Add("$scriptRoot\$leaf")
+        $candidates.Add("$scriptRoot\SDNVHDs\$leaf")
+    }
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -ne $ConfiguredPath -and (Test-Path -LiteralPath $candidate)) {
+            Write-Host "  $Label parent image not found at '$ConfiguredPath'; using '$candidate' (auto-located near the wizard)." -ForegroundColor Yellow
+            return $candidate
+        }
     }
 
     # 3. Give up gracefully; the downstream Test-VHDPath check reports the missing file as before.

@@ -58,11 +58,37 @@ Describe 'Resolve-ParentVHDXPath' {
         Mock Test-Path { $true }  -ParameterFilter { $LiteralPath -eq 'E:\SDNVHDs\gui.vhdx' }
         Resolve-ParentVHDXPath -ConfiguredPath 'C:\SDNVHDs\gui.vhdx' -Label 'GUI' | Should -Be 'E:\SDNVHDs\gui.vhdx'
     }
-    It 'returns the configured path when neither location has the image' {
+    It 'returns the configured path when no candidate has the image' {
         Mock Get-ScriptDriveRoot { 'E:' }
+        Mock Get-ScriptRootFolder { 'E:\HyperVSandbox' }
         Mock Write-Host {}
         Mock Test-Path { $false }
         Resolve-ParentVHDXPath -ConfiguredPath 'C:\SDNVHDs\gui.vhdx' -Label 'GUI' | Should -Be 'C:\SDNVHDs\gui.vhdx'
+    }
+    It 'auto-locates the image beside the wizard script (flat layout)' {
+        Mock Get-ScriptDriveRoot { 'X:' }
+        Mock Get-ScriptRootFolder { 'E:\HyperVSandbox' }
+        Mock Write-Host {}
+        Mock Test-Path { $false }
+        Mock Test-Path { $true } -ParameterFilter { $LiteralPath -eq 'E:\HyperVSandbox\gui.vhdx' }
+        Resolve-ParentVHDXPath -ConfiguredPath 'C:\SDNVHDs\gui.vhdx' -Label 'GUI' | Should -Be 'E:\HyperVSandbox\gui.vhdx'
+    }
+    It 'auto-locates the image in a SDNVHDs folder beside the wizard script' {
+        Mock Get-ScriptDriveRoot { 'X:' }
+        Mock Get-ScriptRootFolder { 'E:\HyperVSandbox' }
+        Mock Write-Host {}
+        Mock Test-Path { $false }
+        Mock Test-Path { $true } -ParameterFilter { $LiteralPath -eq 'E:\HyperVSandbox\SDNVHDs\gui.vhdx' }
+        Resolve-ParentVHDXPath -ConfiguredPath 'C:\SDNVHDs\gui.vhdx' -Label 'GUI' | Should -Be 'E:\HyperVSandbox\SDNVHDs\gui.vhdx'
+    }
+    It 'still prefers the drive-rebased path over the script-adjacent fallback' {
+        Mock Get-ScriptDriveRoot { 'E:' }
+        Mock Get-ScriptRootFolder { 'E:\HyperVSandbox' }
+        Mock Write-Host {}
+        Mock Test-Path { $false } -ParameterFilter { $LiteralPath -eq 'C:\SDNVHDs\gui.vhdx' }
+        Mock Test-Path { $true }  -ParameterFilter { $LiteralPath -eq 'E:\SDNVHDs\gui.vhdx' }
+        Mock Test-Path { $true }  -ParameterFilter { $LiteralPath -eq 'E:\HyperVSandbox\gui.vhdx' }
+        Resolve-ParentVHDXPath -ConfiguredPath 'C:\SDNVHDs\gui.vhdx' -Label 'GUI' | Should -Be 'E:\SDNVHDs\gui.vhdx'
     }
 }
 
