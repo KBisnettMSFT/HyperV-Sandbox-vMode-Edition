@@ -11,13 +11,13 @@ jobs:
     name: Lint + Pester (pwsh)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Run CI test suite (PowerShell 7)
         shell: pwsh
         run: .\tests\Invoke-CI.ps1
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: pester-results-pwsh
           path: tests/testResults.xml
@@ -27,13 +27,13 @@ jobs:
     name: Lint + Pester (Windows PowerShell)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Run CI test suite (Windows PowerShell 5.1)
         shell: powershell
         run: .\tests\Invoke-CI.ps1
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: pester-results-windows-powershell
           path: tests/testResults.xml
