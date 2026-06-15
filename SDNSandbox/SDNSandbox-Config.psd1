@@ -26,7 +26,7 @@
     SDNAdminPassword                     = "Password01"                          # Password for all local and domain accounts. Do not include special characters in the password otherwise some unattended installs may fail.
 
     # VM Configuration
-    HostVMPath                           = "V:\VMs"                              # Path where the Nested VMs are stored on all hosts. If this drive does not exist when New-SDNSandbox.ps1 runs, the path is auto-rebased onto the wizard's drive; set it explicitly to override.
+    HostVMPath                           = "V:\VMs"                              # Path where the Nested VMs are stored on all hosts. If this drive does not exist when New-SDNSandbox.ps1 runs, the path is auto-rebased onto the base-images' drive (so the parent copy can ReFS block-clone), else the wizard's drive; set it explicitly to override.
     NestedVMMemoryinGB                   = 100GB                                 # This value controls the amount of RAM for each Nested Hyper-V Host (SDNHOST1-2).
     sdnMGMTMemoryinGB                    = 36GB                                  # RAM for the SDNMGMT Nested VM (Console, Router, Admincenter, DC, and wacvmode VMs). 36GB to host the always-on WAC vMode VM, which is pinned at 10GB static (installer enforces a hard >=8GB minimum).
     InternalSwitch                       = "InternalSwitch"                      # Name of internal switch that the SDN Lab VMs will use in Single Host mode. This only applies when using a single host.

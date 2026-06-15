@@ -324,9 +324,12 @@ function Resolve-HostVMPath {
         is a DESTINATION that the script creates on demand, so the configured value is honored
         whenever its DRIVE exists (explicit override wins). If the configured drive is not present on
         this machine (e.g. the config still names a drive letter from another box), the path is
-        re-based onto the drive this wizard runs from so deployment does not fail on Set-VMHost.
+        re-based so deployment does not fail on Set-VMHost. The rebase target PREFERS the drive that
+        holds the base images (passed via -PreferredDriveFrom) so the VM files land on the same volume
+        as the parents - keeping the parent-VHDX copy intra-volume so it can ReFS block-clone - and
+        only falls back to the drive this wizard runs from when the images' drive is not usable here.
     #>
-    param([string]$ConfiguredPath)
+    param([string]$ConfiguredPath, [string]$PreferredDriveFrom)
 
     if ([string]::IsNullOrWhiteSpace($ConfiguredPath)) { return $ConfiguredPath }
     if ($ConfiguredPath -notmatch '^[A-Za-z]:') { return $ConfiguredPath }   # UNC/relative: leave as-is
@@ -335,11 +338,18 @@ function Resolve-HostVMPath {
     $configuredDrive = Split-Path $ConfiguredPath -Qualifier
     if (Test-Path -LiteralPath ($configuredDrive + '\')) { return $ConfiguredPath }
 
-    # Configured drive is missing here: re-base onto the drive this wizard runs from.
-    $driveRoot = Get-ScriptDriveRoot
-    $rebased = ConvertTo-ScriptDriveRootedPath -Path $ConfiguredPath -DriveRoot $driveRoot
+    # Configured drive is missing here. Prefer to co-locate the VM files with the base images so the
+    # parent-VHDX copy stays on one volume (ReFS block clone); fall back to the wizard's drive.
+    $targetRoot = $null
+    if (-not [string]::IsNullOrWhiteSpace($PreferredDriveFrom) -and $PreferredDriveFrom -match '^[A-Za-z]:') {
+        $imagesDrive = Split-Path $PreferredDriveFrom -Qualifier
+        if (Test-Path -LiteralPath ($imagesDrive + '\')) { $targetRoot = $imagesDrive }
+    }
+    if (-not $targetRoot) { $targetRoot = Get-ScriptDriveRoot }
+
+    $rebased = ConvertTo-ScriptDriveRootedPath -Path $ConfiguredPath -DriveRoot $targetRoot
     if ($rebased -ne $ConfiguredPath) {
-        Write-Host "  HostVMPath drive '$configuredDrive' not found; using '$rebased' (on the $driveRoot drive). Set HostVMPath in the config to override." -ForegroundColor Yellow
+        Write-Host "  HostVMPath drive '$configuredDrive' not found; using '$rebased' (co-located on the $targetRoot drive). Set HostVMPath in the config to override." -ForegroundColor Yellow
         return $rebased
     }
     return $ConfiguredPath
@@ -4449,7 +4459,7 @@ $NestedVMMemoryinGB = $SDNConfig.NestedVMMemoryinGB
 # longer matches does not break the deployment).
 $guiVHDXPath = Resolve-ParentVHDXPath -ConfiguredPath $SDNConfig.guiVHDXPath -Label 'GUI'
 $coreVHDXPath = Resolve-ParentVHDXPath -ConfiguredPath $SDNConfig.coreVHDXPath -Label 'CORE'
-$HostVMPath = Resolve-HostVMPath -ConfiguredPath $SDNConfig.HostVMPath
+$HostVMPath = Resolve-HostVMPath -ConfiguredPath $SDNConfig.HostVMPath -PreferredDriveFrom $guiVHDXPath
 
 # Speed optimization (#1): while deploying, exclude the multi-GB VHDX working paths from Microsoft
 # Defender real-time scanning - otherwise every parent copy, differencing child and first boot is

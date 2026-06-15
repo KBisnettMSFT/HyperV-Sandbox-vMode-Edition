@@ -103,6 +103,19 @@ Describe 'Resolve-HostVMPath' {
         Mock Test-Path { $false } -ParameterFilter { $LiteralPath -eq 'V:\' }
         Resolve-HostVMPath -ConfiguredPath 'V:\VMs' | Should -Be 'E:\VMs'
     }
+    It 'prefers the base-images drive over the script drive when the configured drive is absent' {
+        Mock Get-ScriptDriveRoot { 'E:' }   # must NOT be used when the images drive is usable
+        Mock Write-Host {}
+        Mock Test-Path { $false } -ParameterFilter { $LiteralPath -eq 'V:\' }
+        Mock Test-Path { $true }  -ParameterFilter { $LiteralPath -eq 'D:\' }
+        Resolve-HostVMPath -ConfiguredPath 'V:\VMs' -PreferredDriveFrom 'D:\SDNVHDs\gui.vhdx' | Should -Be 'D:\VMs'
+    }
+    It 'falls back to the script drive when both the configured and images drives are absent' {
+        Mock Get-ScriptDriveRoot { 'E:' }
+        Mock Write-Host {}
+        Mock Test-Path { $false }
+        Resolve-HostVMPath -ConfiguredPath 'V:\VMs' -PreferredDriveFrom 'D:\SDNVHDs\gui.vhdx' | Should -Be 'E:\VMs'
+    }
     It 'leaves a UNC path unchanged' {
         Resolve-HostVMPath -ConfiguredPath '\\srv\share\VMs' | Should -Be '\\srv\share\VMs'
     }
