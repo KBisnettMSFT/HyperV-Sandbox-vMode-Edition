@@ -3,9 +3,7 @@ BeforeAll {
     $script:coreScripts = @(
         'SDNSandbox\New-HyperVSandbox.ps1',
         'SDNSandbox\New-SDNSandbox.ps1',
-        'SDNSandbox\New-SDNVHDfromISO.ps1',
-        'SDNSandbox\Resume-SDNSandbox.ps1',
-        'SDNSandbox\Repair-WACvModeInstall.ps1'
+        'SDNSandbox\New-SDNVHDfromISO.ps1'
     ) | ForEach-Object { Join-Path $script:repo $_ }
     $script:settings = Join-Path $script:repo 'PSScriptAnalyzerSettings.psd1'
 }

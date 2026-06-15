@@ -1,8 +1,7 @@
 <#
 .SYNOPSIS
   DOT-SOURCE this script to define the deploy engine's FUNCTIONS in the caller's scope WITHOUT
-  executing its main deployment flow. Mirrors the AST-extraction technique already used by
-  Resume-SDNSandbox.ps1, so the launcher itself needs no change.
+  executing its main deployment flow, using AST extraction so the launcher itself needs no change.
 .PARAMETER Path
   Full path to New-HyperVSandbox.ps1.
 .OUTPUTS
