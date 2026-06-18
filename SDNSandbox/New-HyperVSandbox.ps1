@@ -457,6 +457,21 @@ function Invoke-ParallelFileCopy {
     $jobs | Remove-Job -Force -ErrorAction SilentlyContinue
 }
 
+function Write-DeployPhase {
+    # Lightweight per-phase timer: prints wall-clock time, cumulative minutes since deploy start, and
+    # minutes spent in the previous phase, so the operator can see exactly where the deployment time
+    # goes. No-ops until $script:starttime is set (inert when dot-sourced or in -Delete mode). Pure
+    # console output - it changes no deployment logic.
+    param([string]$Name)
+    if (-not $script:starttime) { return }
+    $now = Get-Date
+    if (-not $script:LastPhaseTime) { $script:LastPhaseTime = $script:starttime }
+    $total = [int]($now - $script:starttime).TotalMinutes
+    $delta = [math]::Round(($now - $script:LastPhaseTime).TotalMinutes, 1)
+    Write-Host ("  [PHASE {0:HH:mm:ss} | {1}m total | +{2}m last] {3}" -f $now, $total, $delta, $Name) -ForegroundColor Cyan
+    $script:LastPhaseTime = $now
+}
+
 function Disable-OfflinePrivacyExperience {
     <#
         Suppresses the Windows OOBE "privacy / send diagnostic data to Microsoft" experience in an
@@ -4388,6 +4403,8 @@ $ErrorActionPreference = "Stop"
 
 #Get Start Time
 $starttime = Get-Date
+$script:starttime = $starttime
+$script:LastPhaseTime = $starttime
    
     
 # Import Configuration Module
@@ -4678,6 +4695,8 @@ if (!$SDNConfig.MultipleHyperVHosts) {
 }
     
     
+Write-DeployPhase 'Creating first-tier VMs (SDNMGMT, SDNHOST1/2)'
+
 # Create Virtual Machines
 
 $vmMacs = @()
@@ -4709,6 +4728,8 @@ foreach ($VM in $VMPlacement) {
         
 }
     
+Write-DeployPhase 'Injecting answer files + offline servicing (Add-Files)'
+
 # Inject Answer Files and Binaries into Virtual Machines
 
 $params = @{
@@ -4724,6 +4745,8 @@ $params = @{
 
 Add-Files @params
     
+Write-DeployPhase 'Starting first-tier VMs + waiting for online'
+
 # Start Virtual Machines
 
 Start-SDNHOSTS -VMPlacement $VMPlacement
@@ -4741,6 +4764,8 @@ $params = @{
 
 Test-SDNHOSTVMConnection @params
     
+Write-DeployPhase 'Formatting data drives'
+
 # Online and Format Data Volumes on Virtual Machines
 
 $params = @{
@@ -4753,6 +4778,8 @@ $params = @{
 
 New-DataDrive @params
     
+Write-DeployPhase 'Installing SDN host software on hosts'
+
 # Install SDN Host Software on NestedVMs
 
 $params = @{
@@ -4781,6 +4808,8 @@ $params.scriptpath = 'Get-Netadapter ((Get-NetAdapterAdvancedProperty | Where-Ob
 
 Start-PowerShellScriptsOnHosts @params
     
+Write-DeployPhase 'Restarting + reconnecting hosts'
+
 # Restart Machines
 
 $params.scriptpath = "Restart-Computer -Force"
@@ -4805,6 +4834,8 @@ Test-SDNHOSTVMConnection @params
 Write-Verbose "Ensuring that all VMs have been restarted after Hyper-V install.."
 Test-SDNHOSTVMConnection @params
     
+Write-DeployPhase 'Configuring SDNMGMT networking (NAT switch)'
+
 # Create NAT Virtual Switch on SDNMGMT
 
 if ($natConfigure) {
@@ -4827,6 +4858,8 @@ if ($natConfigure) {
 
 }
     
+Write-DeployPhase 'Provisioning SDNMGMT nested VMs (DC/AD, Router, WAC, vMode)'
+
 # Provision SDNMGMT VMs (DC, Router, and AdminCenter)
 
 Write-Verbose  "Configuring Management VM"
@@ -4842,6 +4875,8 @@ $params = @{
 
 Set-SDNMGMT @params
 
+Write-DeployPhase 'Provisioning hyperconverged environment'
+
 # Provision Hyper-V Logical Switches and Create S2D Cluster on Hosts
 
 $params = @{
@@ -4853,6 +4888,8 @@ $params = @{
 
 New-HyperConvergedEnvironment @params
 
+
+Write-DeployPhase 'Creating S2D cluster'
 
 # Create S2D Cluster
 
@@ -4868,6 +4905,8 @@ $params = @{
 New-SDNS2DCluster @params
 
 
+
+Write-DeployPhase 'Provisioning Network Controller / SDN (if enabled)'
 
 # Install and Configure Network Controller if specified
 
@@ -4914,6 +4953,8 @@ If ($SDNConfig.ProvisionLegacyNC) {
     
 }
 
+
+Write-DeployPhase 'Finalizing (shortcuts, cleanup)'
 
 # Finally - Add RDP Link to Desktop
 

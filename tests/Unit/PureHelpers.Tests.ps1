@@ -194,3 +194,20 @@ Describe 'Add/Remove-SandboxDefenderExclusion' {
         Assert-MockCalled Remove-MpPreference -Times 2 -Exactly
     }
 }
+
+Describe 'Write-DeployPhase' {
+    AfterEach { $script:starttime = $null; $script:LastPhaseTime = $null }
+    It 'is a silent no-op until the deploy timer has started' {
+        $script:starttime = $null
+        Mock Write-Host {}
+        Write-DeployPhase 'should-not-print'
+        Assert-MockCalled Write-Host -Times 0 -Exactly
+    }
+    It 'prints a timed phase line once the timer is started' {
+        $script:starttime = (Get-Date).AddMinutes(-47)
+        $script:LastPhaseTime = (Get-Date).AddMinutes(-12)
+        Mock Write-Host {}
+        Write-DeployPhase 'Test phase'
+        Assert-MockCalled Write-Host -Times 1 -Exactly -ParameterFilter { "$Object" -match 'PHASE' -and "$Object" -match 'Test phase' }
+    }
+}
