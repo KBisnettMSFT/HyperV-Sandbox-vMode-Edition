@@ -125,6 +125,8 @@ The lab reaches the internet through a chain of NATs that all ride **the host's 
 * **`natDNS` must be reachable from the host.** Many corporate networks **block public resolvers** (`8.8.8.8`, `1.1.1.1`) to force internal DNS. When that happens the nested VMs route fine but resolve nothing — so the whole lab looks like it has **"no internet"**. **Fix:** set `natDNS` in `SDNSandbox-Config.psd1` to your **internal/corporate DNS server** (the one the host itself uses).
 * **The host needs *direct* (un-proxied) outbound internet.** Windows NAT is layer-3 and **cannot traverse an HTTP proxy**. If the host only reaches the web through a proxy, the nested lab can't get out even though a browser on the host works.
 
+> **Corporate DNS-suffix name collisions (handled automatically):** the deploy contacts lab VMs by single-label name (e.g. `admincenter`). If the host is **domain-joined to a corporate domain**, Windows qualifies that to `admincenter.<corp-domain>` and may resolve it to a **colliding corporate record** instead of the lab VM — which previously broke the deploy (it would connect to the wrong host and fail authentication). To prevent this, `New-HyperVSandbox.ps1` now writes the lab's name→IP mappings (`admincenter`, `console`, the DC, `SDNMGMT`, `SDNHOST1/2/3`, `bgp-tor-router`, `wacvmode` — both short and `<name>.contoso.com`) into the host's **`hosts` file** inside a marked block, so lab names always resolve locally. The block is removed automatically by `New-HyperVSandbox.ps1 -Delete $true`. (To check/clean manually, look for the `# >>> Hyper-V Sandbox lab ... >>>` block in `%windir%\System32\drivers\etc\hosts`.)
+
 Quick triage (run on the **host**; the second block needs PowerShell Direct into `SDNMGMT`):
 
 ```powershell

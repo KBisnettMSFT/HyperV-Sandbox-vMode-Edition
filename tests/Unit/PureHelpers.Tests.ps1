@@ -211,3 +211,56 @@ Describe 'Write-DeployPhase' {
         Assert-MockCalled Write-Host -Times 1 -Exactly -ParameterFilter { "$Object" -match 'PHASE' -and "$Object" -match 'Test phase' }
     }
 }
+
+Describe 'Remove-MarkedBlock' {
+    BeforeAll {
+        $begin = '# >>> BEGIN >>>'
+        $end = '# <<< END <<<'
+    }
+    It 'removes the inclusive marked block and keeps everything else' {
+        $lines = @('keep1', $begin, 'lab-a', 'lab-b', $end, 'keep2')
+        $r = Remove-MarkedBlock -Lines $lines -Begin $begin -End $end
+        ($r -join '|') | Should -Be 'keep1|keep2'
+    }
+    It 'returns the input unchanged when no block is present' {
+        $lines = @('keep1', 'keep2')
+        $r = Remove-MarkedBlock -Lines $lines -Begin $begin -End $end
+        ($r -join '|') | Should -Be 'keep1|keep2'
+    }
+    It 'removes multiple blocks (e.g. a duplicated run)' {
+        $lines = @($begin, 'a', $end, 'keep', $begin, 'b', $end)
+        $r = Remove-MarkedBlock -Lines $lines -Begin $begin -End $end
+        ($r -join '|') | Should -Be 'keep'
+    }
+}
+
+Describe 'Get-LabHostsEntry' {
+    BeforeAll {
+        $script:cfg = @{
+            SDNDomainFQDN = 'contoso.com'; DCName = 'contosodc'; vModeVMName = 'wacvmode'
+            WACIP = '192.168.1.9/24'; CONSOLEIP = '192.168.1.10/24'; DCIP = '192.168.1.254/24'
+            SDNMGMTIP = '192.168.1.11/24'; SDNHOST1IP = '192.168.1.12/24'; SDNHOST2IP = '192.168.1.13/24'
+            SDNHOST3IP = '192.168.1.14/24'; BGPRouterIP_MGMT = '192.168.1.1/24'; vModeIP = '192.168.1.15/24'
+        }
+    }
+    It 'maps admincenter to the WAC IP with short + FQDN names' {
+        $e = Get-LabHostsEntry -SDNConfig $script:cfg | Where-Object { $_.Names -contains 'admincenter' }
+        $e.IP | Should -Be '192.168.1.9'
+        $e.Names | Should -Contain 'admincenter.contoso.com'
+    }
+    It 'uses the configurable DC and vMode VM names' {
+        $names = (Get-LabHostsEntry -SDNConfig $script:cfg).Names
+        $names | Should -Contain 'contosodc'
+        $names | Should -Contain 'wacvmode'
+        $names | Should -Contain 'wacvmode.contoso.com'
+    }
+    It 'strips the CIDR suffix from every IP' {
+        (Get-LabHostsEntry -SDNConfig $script:cfg).IP | ForEach-Object { $_ | Should -Not -Match '/' }
+    }
+    It 'skips entries whose IP is missing' {
+        $cfg2 = $script:cfg.Clone(); $cfg2.CONSOLEIP = ''
+        $names = (Get-LabHostsEntry -SDNConfig $cfg2).Names
+        $names | Should -Not -Contain 'console'
+        $names | Should -Contain 'admincenter'
+    }
+}

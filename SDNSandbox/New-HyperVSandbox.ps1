@@ -472,6 +472,94 @@ function Write-DeployPhase {
     $script:LastPhaseTime = $now
 }
 
+function Remove-MarkedBlock {
+    # Pure: returns $Lines with the inclusive $Begin..$End marked block removed. Tolerates a missing
+    # block (returns the input unchanged) and multiple blocks (removes them all). Used for surgical
+    # hosts-file cleanup so we never disturb the user's own entries.
+    param([string[]]$Lines, [string]$Begin, [string]$End)
+    $out = New-Object System.Collections.Generic.List[string]
+    $inBlock = $false
+    foreach ($line in $Lines) {
+        if ($line -eq $Begin) { $inBlock = $true; continue }
+        if ($line -eq $End) { $inBlock = $false; continue }
+        if (-not $inBlock) { $out.Add($line) }
+    }
+    return $out.ToArray()
+}
+
+function Get-LabHostsEntry {
+    # Pure: builds the lab management-plane name->IP mappings from the config so the physical host can
+    # resolve lab VMs by name even when its own (corporate) primary DNS suffix would otherwise qualify
+    # a single-label name like "admincenter" to a colliding corporate record. Returns objects with .IP
+    # and .Names (short name + <name>.<labFQDN>). Skips any entry missing an IP or name.
+    param($SDNConfig)
+    $fqdn = $SDNConfig.SDNDomainFQDN
+    $ipOf = { param($cidr) if ([string]::IsNullOrWhiteSpace($cidr)) { '' } else { ($cidr -split '/')[0].Trim() } }
+    $map = @(
+        @{ Name = 'admincenter'; IP = (& $ipOf $SDNConfig.WACIP) }
+        @{ Name = 'console'; IP = (& $ipOf $SDNConfig.CONSOLEIP) }
+        @{ Name = $SDNConfig.DCName; IP = (& $ipOf $SDNConfig.DCIP) }
+        @{ Name = 'SDNMGMT'; IP = (& $ipOf $SDNConfig.SDNMGMTIP) }
+        @{ Name = 'SDNHOST1'; IP = (& $ipOf $SDNConfig.SDNHOST1IP) }
+        @{ Name = 'SDNHOST2'; IP = (& $ipOf $SDNConfig.SDNHOST2IP) }
+        @{ Name = 'SDNHOST3'; IP = (& $ipOf $SDNConfig.SDNHOST3IP) }
+        @{ Name = 'bgp-tor-router'; IP = (& $ipOf $SDNConfig.BGPRouterIP_MGMT) }
+        @{ Name = $SDNConfig.vModeVMName; IP = (& $ipOf $SDNConfig.vModeIP) }
+    )
+    foreach ($m in $map) {
+        if (-not [string]::IsNullOrWhiteSpace($m.IP) -and -not [string]::IsNullOrWhiteSpace($m.Name)) {
+            $names = if ([string]::IsNullOrWhiteSpace($fqdn)) { @($m.Name) } else { @($m.Name, "$($m.Name).$fqdn") }
+            [pscustomobject]@{ IP = $m.IP; Names = $names }
+        }
+    }
+}
+
+function Set-LabHostsFile {
+    # Writes the lab name->IP mappings into the host's hosts file inside a clearly-marked block, so the
+    # physical host resolves single-label lab names locally instead of letting its corporate DNS suffix
+    # hijack them (e.g. "admincenter" -> admincenter.<corp> instead of the lab's 192.168.1.x). The
+    # hosts file is consulted BEFORE any DNS suffixing, so this is deterministic and immune to corporate
+    # DNS policy. Idempotent (the marked block is rewritten each run) and best-effort (never throws).
+    param($SDNConfig)
+    $hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+    $begin = '# >>> Hyper-V Sandbox lab (auto-added by New-HyperVSandbox.ps1 - do not edit this block) >>>'
+    $end = '# <<< Hyper-V Sandbox lab <<<'
+    try {
+        $entries = @(Get-LabHostsEntry -SDNConfig $SDNConfig)
+        if ($entries.Count -eq 0) { return }
+        $block = @($begin) + ($entries | ForEach-Object { '{0,-15} {1}' -f $_.IP, ($_.Names -join ' ') }) + @($end)
+        $existing = if (Test-Path -LiteralPath $hostsPath) { @(Get-Content -LiteralPath $hostsPath) } else { @() }
+        $cleaned = @(Remove-MarkedBlock -Lines $existing -Begin $begin -End $end)
+        Set-Content -LiteralPath $hostsPath -Value ($cleaned + $block) -Encoding ASCII -Force
+        & ipconfig /flushdns | Out-Null
+        Write-Host "  Added $($entries.Count) lab name->IP mappings to the hosts file so lab names resolve locally (bypasses corporate DNS)." -ForegroundColor DarkGray
+    }
+    catch {
+        Write-Verbose "Could not update the hosts file ($hostsPath): $($_.Exception.Message). Lab-by-name resolution will fall back to DNS."
+    }
+}
+
+function Remove-LabHostsFile {
+    # Removes the marked lab block added by Set-LabHostsFile from the host's hosts file (used by the
+    # -Delete teardown). Best-effort; never throws and leaves all non-lab entries untouched.
+    $hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+    $begin = '# >>> Hyper-V Sandbox lab (auto-added by New-HyperVSandbox.ps1 - do not edit this block) >>>'
+    $end = '# <<< Hyper-V Sandbox lab <<<'
+    try {
+        if (-not (Test-Path -LiteralPath $hostsPath)) { return }
+        $existing = @(Get-Content -LiteralPath $hostsPath)
+        $cleaned = @(Remove-MarkedBlock -Lines $existing -Begin $begin -End $end)
+        if ($cleaned.Count -ne $existing.Count) {
+            Set-Content -LiteralPath $hostsPath -Value $cleaned -Encoding ASCII -Force
+            & ipconfig /flushdns | Out-Null
+            Write-Verbose "Removed the Hyper-V Sandbox lab block from the hosts file."
+        }
+    }
+    catch {
+        Write-Verbose "Could not clean the hosts file: $($_.Exception.Message)."
+    }
+}
+
 function Disable-OfflinePrivacyExperience {
     <#
         Suppresses the Windows OOBE "privacy / send diagnostic data to Microsoft" experience in an
@@ -4081,6 +4169,8 @@ function Delete-SDNSandbox {
     Write-Verbose "Deleting Internal Switches"
     Get-VMSwitch | Where-Object { $_.SwitchType -eq "Internal" } | Remove-VMSwitch -Force -Confirm:$false
 
+    Write-Verbose "Removing lab hosts-file entries"
+    Remove-LabHostsFile
 
 }
 
@@ -4488,6 +4578,13 @@ if ($SDNConfig.OptimizeDefenderDuringDeploy) {
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
     $script:DefenderExclusionsApplied = Add-SandboxDefenderExclusion -Path $defenderPaths
 }
+
+# Resolve lab VM names locally on the host. The deploy contacts lab VMs by single-label name (e.g.
+# Invoke-Command -ComputerName admincenter). On a host whose primary DNS suffix is a corporate domain,
+# that name gets qualified to <name>.<corp> and can resolve to a colliding corporate record instead of
+# the lab VM - breaking the deploy. Writing the lab's fixed name->IP mappings to the hosts file (checked
+# before any DNS suffixing) makes lab-name resolution deterministic and immune to corporate DNS.
+Set-LabHostsFile -SDNConfig $SDNConfig
 
 $InternalSwitch = $SDNConfig.InternalSwitch
 $natDNS = $SDNConfig.natDNS
