@@ -54,7 +54,7 @@
     natHostVMSwitchName                  = "InternalNAT"
     natConfigure                         = $true
     natSubnet                            = "192.168.46.0/24"                      # This value is the subnet is the NAT router will use to route to  SDNMGMT to access the Internet. It can be any /24 subnet and is only used for routing.
-    natDNS                               = "8.8.8.8"                              # DNS address for forwarding from Domain Controller. Do NOT use Cloudflare DNS (1.1.1.1).
+    natDNS                               = "8.8.8.8"                              # Upstream DNS the lab's DC forwards to. MUST be reachable from the HOST's network. Many corporate/lab networks block public resolvers (8.8.8.8, 1.1.1.1) - if so, nested VMs resolve nothing and appear to have "no internet". Set this to your internal/corporate DNS server. See README "Deploying on a restricted / corporate network".
 
     # Global MTU
     SDNLABMTU                            = 9014                                   # Controls the MTU for all Hosts. If using multiple physical hosts. Ensure that you have configured MTU on physical nics on the hosts to match this value.

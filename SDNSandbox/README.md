@@ -118,6 +118,39 @@ The deploy also exposes three opt-in switches in `SDNSandbox-Config.psd1`:
 
 If you wish the environment to have internet access in the Sandbox, create a VMswitch on the FIRST host that maps to a NIC on a network that has internet access the network should use DHCP. The configuration file will need to be updated to include the name of the VMswitch to use for NAT.
 
+### Deploying on a restricted / corporate network
+
+The lab reaches the internet through a chain of NATs that all ride **the host's own internet connection**: the host creates an internal `InternalNAT` switch (`192.168.128.1/24`) with a `New-NetNat`; SDNMGMT gets `192.168.128.5` (gateway `.1`, the host) and forwards DNS to `natDNS`; the Domain Controller then forwards **all** lab DNS to that same `natDNS`. Two things must therefore be true on the host's network, and both commonly fail on corporate/lab networks:
+
+* **`natDNS` must be reachable from the host.** Many corporate networks **block public resolvers** (`8.8.8.8`, `1.1.1.1`) to force internal DNS. When that happens the nested VMs route fine but resolve nothing — so the whole lab looks like it has **"no internet"**. **Fix:** set `natDNS` in `SDNSandbox-Config.psd1` to your **internal/corporate DNS server** (the one the host itself uses).
+* **The host needs *direct* (un-proxied) outbound internet.** Windows NAT is layer-3 and **cannot traverse an HTTP proxy**. If the host only reaches the web through a proxy, the nested lab can't get out even though a browser on the host works.
+
+Quick triage (run on the **host**; the second block needs PowerShell Direct into `SDNMGMT`):
+
+```powershell
+# HOST — does it resolve via, and is the public resolver blocked?
+Resolve-DnsName aka.ms                                   # corporate DNS working?
+(Get-DnsClientServerAddress -AddressFamily IPv4).ServerAddresses   # <- use one of these as natDNS
+Test-NetConnection aka.ms -Port 443                      # TcpTestSucceeded:True = direct internet (no proxy)
+Test-NetConnection 8.8.8.8 -Port 53                      # Ping OK but TcpTestSucceeded:False = public DNS blocked
+
+# SDNMGMT — separate ROUTING from DNS (the usual giveaway):
+Test-NetConnection 192.168.128.1 -Port 445               # reaches the host NAT gateway?
+Test-NetConnection 1.1.1.1 -Port 443                     # raw routing to the internet (no DNS)
+Resolve-DnsName microsoft.com                            # DNS via the DC forwarder
+```
+
+Interpretation: **routing works but `Resolve-DnsName` fails → it's `natDNS`** (point it at your corporate DNS). If raw routing to the internet also fails from the host, you're behind a **proxy** and the host's egress must be sorted first.
+
+Already-deployed lab? You don't need a full redeploy — fix the forwarder live on the DC (PowerShell Direct from the host into `contosodc` / `192.168.1.254`):
+
+```powershell
+Get-DnsServerForwarder | Remove-DnsServerForwarder -Force
+Add-DnsServerForwarder -IPAddress <your-corporate-DNS-IP>
+```
+
+> **Jumbo frames:** the lab defaults to `SDNLABMTU = 9014`. If the physical NIC/switch doesn't support jumbo frames you may see "ping works but web/TLS hangs" — set `SDNLABMTU = 1514`. (Subnets are **not** the problem here: the lab uses non-overlapping `192.168.x` / `10.1x.x` ranges, so a host on, say, `10.57.x.x` does not collide — do **not** renumber the lab to fix internet access.)
+
 
 ## Software Prerequisites
 
